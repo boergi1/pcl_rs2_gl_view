@@ -14,6 +14,17 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/console/parse.h>
 
+#include <pcl/point_types.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/point_cloud.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/ModelCoefficients.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
+
 #include "format.h"
 #include <thread>
 #include <mutex>
@@ -56,20 +67,39 @@ private:
                 m_pcl_cvt_mtx->unlock();
                 cout << "(PCL) Increased read index: " << m_clouds_read_idx << " size " << m_proc_cloud->size() << endl;
                 // PCL processing
+//                if (m_proc_cloud != nullptr)
+//                {
+                    pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+                    pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+                    pcl::SACSegmentation<pcl::PointXYZ> seg;
+                    seg.setOptimizeCoefficients (true);
+                    seg.setModelType (pcl::SACMODEL_PLANE);
+                    seg.setMethodType (pcl::SAC_RANSAC);
+                    seg.setDistanceThreshold (0.01);
+                    seg.setInputCloud (m_proc_cloud);
+                    seg.segment (*inliers, *coefficients);
+                    if (inliers->indices.size () == 0)
+                    {
+                      PCL_ERROR ("Could not estimate a planar model for the given dataset.");
+                    }
+
+                    std::cerr << "Model coefficients: " << coefficients->values[0] << " "
+                                                        << coefficients->values[1] << " "
+                                                        << coefficients->values[2] << " "
+                                                        << coefficients->values[3] << std::endl;
+
+                      std::cerr << "Model inliers: " << inliers->indices.size () << std::endl;
+//                }
+
+
+
 
             }
             else {
                 std::this_thread::sleep_for(std::chrono::milliseconds(PROC_DELAY));
             }
 
-            //            // Read from rs2::points buffer
-            //            m_points_mutex_ref->lock();
-            //            rs2::points points = m_points_buf_ref[ *m_points_read_idx_ref ];
-            //            *m_points_read_idx_ref = *m_points_read_idx_ref + 1;
-            //            if (*m_points_read_idx_ref == POINT_BUF_SIZE-1)
-            //                *m_points_read_idx_ref = 0;
-            //            cout << "(Converter) Increased read index: " << *m_points_read_idx_ref << " size " << points.size() << endl;
-            //            m_points_mutex_ref->unlock();
+
 
 
         }
@@ -89,18 +119,19 @@ public:
     std::function<void (pcl::visualization::PCLVisualizer&)> viewer_update_callback = [this](pcl::visualization::PCLVisualizer& viewer)
     {
         // auto start = chrono::steady_clock::now();
-        std::cout << "PCL visualization started # " << std::this_thread::get_id() << std::endl;
+
 
         if (m_proc_cloud != nullptr && !m_proc_cloud->empty())
         {
+            std::cout << "PCL visualization callback # " << std::this_thread::get_id() << std::endl;
             if(!viewer.updatePointCloud(m_proc_cloud, "rs cloud"))
             {
 
                 viewer.addPointCloud(m_proc_cloud, "rs cloud");
                 viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "rs cloud");
                 //  viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT_JET, 0, 255, "rs_cloud" );
-                viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT,
-                                                        pcl::visualization::PCL_VISUALIZER_LUT_JET, "rs_cloud");
+                //                viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT,
+                //                                                        pcl::visualization::PCL_VISUALIZER_LUT_JET, "rs_cloud");
 
             }
         }
@@ -121,29 +152,29 @@ public:
         //    viewer.addSphere (o, 0.25, "sphere", 0);
     }
 
-    void updatePointCloud (pcl::visualization::PCLVisualizer& viewer)
-    {
-        // auto start = chrono::steady_clock::now();
-        std::cout << "PCL visualization started # " << std::this_thread::get_id() << std::endl;
+    //    void updatePointCloud (pcl::visualization::PCLVisualizer& viewer)
+    //    {
+    //        // auto start = chrono::steady_clock::now();
+    //        std::cout << "PCL visualization started # " << std::this_thread::get_id() << std::endl;
 
 
-        if(!viewer.updatePointCloud(m_proc_cloud, "rs cloud"))
-        {
-            if (!m_proc_cloud->empty())
-            {
-                viewer.addPointCloud(m_proc_cloud, "rs cloud");
-                viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "rs cloud");
-                //  viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT_JET, 0, 255, "rs_cloud" );
-                viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT,
-                                                        pcl::visualization::PCL_VISUALIZER_LUT_JET, "rs_cloud");
-            }
-        }
-        viewer.spinOnce (10);
-        //  auto end = chrono::steady_clock::now();
-        //   cout << "View thread took " << chrono::duration_cast<chrono::milliseconds>(end-start).count() << " ms" << endl;
+    //        if(!viewer.updatePointCloud(m_proc_cloud, "rs cloud"))
+    //        {
+    //            if (!m_proc_cloud->empty())
+    //            {
+    //                viewer.addPointCloud(m_proc_cloud, "rs cloud");
+    //                viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "rs cloud");
+    //                //  viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT_JET, 0, 255, "rs_cloud" );
+    ////                viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT,
+    ////                                                        pcl::visualization::PCL_VISUALIZER_LUT_JET, "rs_cloud");
+    //            }
+    //        }
+    //        viewer.spinOnce (10);
+    //        //  auto end = chrono::steady_clock::now();
+    //        //   cout << "View thread took " << chrono::duration_cast<chrono::milliseconds>(end-start).count() << " ms" << endl;
 
 
-    }
+    //    }
 
     void startThread()
     {

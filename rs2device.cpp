@@ -65,14 +65,24 @@ void Rs2Device::captureClient(bool running)
     {
         rs2::config rs2_cfg;
         rs2_cfg.enable_device(m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER));
-        rs2_cfg.enable_stream(RS2_STREAM_DEPTH, FRAME_WIDTH, FRAME_HEIGHT, RS2_FORMAT_Z16, FRAME_RATE);
+        rs2_cfg.enable_stream(RS2_STREAM_DEPTH);
+        //  rs2_cfg.enable_stream(RS2_STREAM_DEPTH, FRAME_WIDTH, FRAME_HEIGHT, RS2_FORMAT_Z16, FRAME_RATE);
         std::cout << "Starting pipe of " << m_serial_num << std::endl;
         m_rs2_pipe = rs2::pipeline();
         rs2::pipeline_profile pipe_profile = m_rs2_pipe.start(rs2_cfg, depth_callback );
         std::cout << "Enabled streams:";
         for (auto p : pipe_profile.get_streams())
-            std::cout << " " << p.stream_name();
+        {
+           auto vsp = p.as<rs2::video_stream_profile>();
+            std::cout << " " << vsp.stream_name() << " resolution: " << vsp.width() << "x" << vsp.height() << " fps: " << vsp.fps() << " format: " << vsp.format();
+        }
+
         std::cout << std::endl;
+
+
+
+
+
     }
     else {
         m_rs2_pipe.stop();

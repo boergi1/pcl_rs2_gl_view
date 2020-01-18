@@ -88,7 +88,8 @@ private:
                                                         << coefficients->values[2] << " "
                                                         << coefficients->values[3] << std::endl;
 
-                      std::cerr << "Model inliers: " << inliers->indices.size () << std::endl;
+                    std::cerr << "Model inliers: " << inliers->indices.size() << std::endl;
+                    std::cerr << "Input size: " << m_proc_cloud->size() << std::endl;
 //                }
 
 

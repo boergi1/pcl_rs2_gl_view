@@ -21,12 +21,16 @@ int main() try
 
     device_interface = new DeviceInterface;
     size_t rs2_device_count = device_interface->connectRealSenseDevices();
-    pcl_interface = new PclInterface(rs2_device_count);
+    if (rs2_device_count > 0)
+    {
+        pcl_interface = new PclInterface(rs2_device_count);
+        rs2_pcl_conv = new Rs2_PCL_Converter(device_interface, pcl_interface, rs2_device_count);
+        rs2_pcl_conv->startThread();
+        pcl_interface->startThread();
+    }
+    else std::cout << "No Realsense device found" << std::endl;
 
-    rs2_pcl_conv = new Rs2_PCL_Converter(device_interface, pcl_interface, rs2_device_count);
-    rs2_pcl_conv->startThread();
-
-    pcl_interface->startThread();
+    device_interface->connectVideoDevice(2);
 
 
     while (true) {

@@ -108,7 +108,7 @@ private:
 
                 std::cerr << "Extracted surface: " << m_filtered_cloud->size() << std::endl;
 
-                if (false) // This takes very long
+                if (false) // This takes very long for huge data
                 {
                     // Create the KdTree object for the search method of the extraction
                     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);

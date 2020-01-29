@@ -9,8 +9,14 @@
 
 #define CONV_DELAY FRAME_PERIOD/2 // rs2 to pcl converter race condition
 #define PROC_DELAY CONV_DELAY
+#define SEG_DELAY 100
 
 #define POINT_BUF_SIZE 100
 #define CLOUD_BUF_SIZE 100
+#define MAT_BUF_SIZE 100
+#define CAP_BUF_SIZE 100
+
+#define REF_PIXEL 60
+#define REF_SIZE_MM 26
 
 #endif // FORMAT_H

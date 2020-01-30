@@ -190,7 +190,7 @@ private:
     }
 public:
     Rs2_PCL_Converter(DeviceInterface* in_interface_ref, PclInterface* out_interface_ref ,size_t device_count)
-        : m_current_cloud(new pcl::PointCloud<pcl::PointXYZ>(FRAME_WIDTH,FRAME_HEIGHT))
+        : m_current_cloud(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_WIDTH,RS_FRAME_HEIGHT))
     {
         // m_ref_interface = interface_ref;
         rs2_device_count = device_count;

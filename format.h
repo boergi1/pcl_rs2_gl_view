@@ -1,13 +1,17 @@
 #ifndef FORMAT_H
 #define FORMAT_H
 
-#define FRAME_WIDTH 1280 //1280 //640
-#define FRAME_HEIGHT 720 //720 //480
-#define FRAME_RATE 15 //15 //30
-#define FRAME_PERIOD 1000/FRAME_RATE
-#define FRAME_SIZE FRAME_WIDTH * FRAME_HEIGHT
+#define RS_FRAME_WIDTH 1280 //1280 //640
+#define RS_FRAME_HEIGHT 720 //720 //480
+#define RS_FRAME_RATE 15 //15 //30
+#define RS_FRAME_PERIOD 1000/RS_FRAME_RATE
+#define RS_FRAME_SIZE RS_FRAME_WIDTH * RS_FRAME_HEIGHT
 
-#define CONV_DELAY FRAME_PERIOD/2 // rs2 to pcl converter race condition
+#define CV_FRAME_WIDTH 1600
+#define CV_FRAME_HEIGHT 1200
+#define CV_FRAME_RATE 5
+
+#define CONV_DELAY RS_FRAME_PERIOD/2 // rs2 to pcl converter race condition
 #define PROC_DELAY CONV_DELAY
 #define SEG_DELAY 100
 
@@ -18,5 +22,8 @@
 
 #define REF_PIXEL 60
 #define REF_SIZE_MM 26
+
+//#define IMSHOW_CAP
+//#define IMSHOW_SEG
 
 #endif // FORMAT_H

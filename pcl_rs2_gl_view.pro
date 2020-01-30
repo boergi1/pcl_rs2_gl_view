@@ -35,7 +35,7 @@ LIBS += \
         -lpcl_features -lpcl_keypoints -lpcl_surface -lpcl_registration -lpcl_segmentation -lpcl_recognition \
         -lpcl_visualization -lpcl_people -lpcl_outofcore -lpcl_tracking -lpcl_stereo -lpcl_ml \
         # OpenCV
-        -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_features2d -lopencv_calib3d -lopencv_videoio \
+        -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_features2d -lopencv_calib3d -lopencv_videoio -lopencv_tracking \
         # VTK
         -lvtkCommonCore-6.3 -lvtkalglib-6.3 -lvtkChartsCore-6.3 -lvtkDICOMParser-6.3 -lvtkDomainsChemistry-6.3 \
         -lvtkFiltersCore-6.3 -lvtkGeovisCore-6.3 \
@@ -54,6 +54,7 @@ LIBS += \
 
 UBU16 {
 INCLUDEPATH += /usr/include/pcl-1.7 /usr/include/eigen3 /usr/include/ni /usr/include/vtk-6.2 /usr/include/boost /usr/local/include/opencv4
+
 LIBS += \
         # General
         -pthread \ #-lflann -lqhull \ # -lOpenNI -lOpenNI2
@@ -65,7 +66,7 @@ LIBS += \
         -lpcl_features -lpcl_keypoints -lpcl_surface -lpcl_registration -lpcl_segmentation -lpcl_recognition \
         -lpcl_visualization -lpcl_people -lpcl_outofcore -lpcl_tracking \
         # OpenCV
-        -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_features2d -lopencv_calib3d -lopencv_videoio \
+        -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_features2d -lopencv_calib3d -lopencv_videoio -lopencv_tracking \
         # VTK
         -lvtkCommonCore-6.2 -lvtkalglib-6.2 -lvtkChartsCore-6.2 -lvtkDICOMParser-6.2 -lvtkDomainsChemistry-6.2 \
         -lvtkFiltersCore-6.2 -lvtkGeovisCore-6.2 \

@@ -1,6 +1,8 @@
 #ifndef FORMAT_H
 #define FORMAT_H
 
+#define VERBOSE 1
+
 #define RS_FRAME_WIDTH 1280 //1280 //640
 #define RS_FRAME_HEIGHT 720 //720 //480
 #define RS_FRAME_RATE 15 //15 //30

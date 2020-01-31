@@ -12,6 +12,7 @@ SOURCES += \
         rs2device.cpp
 
 HEADERS += \
+    customtypes.h \
     deviceinterface.h \
     format.h \
     ocvdevice.h \

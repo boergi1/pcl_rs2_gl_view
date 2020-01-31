@@ -7,9 +7,9 @@
 #define RS_FRAME_PERIOD 1000/RS_FRAME_RATE
 #define RS_FRAME_SIZE RS_FRAME_WIDTH * RS_FRAME_HEIGHT
 
-#define CV_FRAME_WIDTH 1600
-#define CV_FRAME_HEIGHT 1200
-#define CV_FRAME_RATE 5
+#define CV_FRAME_WIDTH 1280  //1600
+#define CV_FRAME_HEIGHT 720 //1200
+#define CV_FRAME_RATE 10 //5
 
 #define CONV_DELAY RS_FRAME_PERIOD/2 // rs2 to pcl converter race condition
 #define PROC_DELAY CONV_DELAY
@@ -19,6 +19,7 @@
 #define CLOUD_BUF_SIZE 100
 #define MAT_BUF_SIZE 100
 #define CAP_BUF_SIZE 100
+#define TOBJ_BUF_SIZE 100
 
 #define REF_PIXEL 60
 #define REF_SIZE_MM 26

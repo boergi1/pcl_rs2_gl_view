@@ -2,6 +2,7 @@
 #define OCVDEVICE_H
 
 #include "format.h"
+#include "customtypes.h"
 
 #include <iostream>
 #include <thread>
@@ -33,7 +34,7 @@ private:
 
     const double mm_per_pix = static_cast<double>(REF_SIZE_MM)/static_cast<double>(REF_PIXEL);
 
-    cv::VideoCapture* m_capture = nullptr;
+    cv::VideoCapture* m_capture;
 
     std::vector<std::string> trackerTypes = {"BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "GOTURN", "MOSSE", "CSRT"};
 
@@ -41,6 +42,9 @@ private:
     std::mutex m_marker_mutex;
     cv::Mat** m_capture_buf;
     size_t m_capture_write_idx, m_marker_read_idx;
+
+    tracked_object** m_tracked_objects_buf;
+    size_t m_objects_write_idx;
 
     // external refs
     std::mutex* m_mutex_ref;
@@ -239,65 +243,76 @@ private:
                 cv::Mat labels, stats, centroids;
                 int marker_count = cv::connectedComponentsWithStats(marker, labels, stats, centroids, 4, CV_32S); // 10-15 ms
 
+                // tracked_object* obj_ptr_arr[2];
+
+                tracked_object* obj_ptr_arr = new tracked_object[marker_count];
+
+                for (int i = 0; i < marker_count; i++)
+                {
+                    obj_ptr_arr[i].x = stats.at<int>(i, cv::CC_STAT_LEFT);
+                    obj_ptr_arr[i].y = stats.at<int>(i, cv::CC_STAT_TOP);
+                    obj_ptr_arr[i].w = stats.at<int>(i, cv::CC_STAT_WIDTH);
+                    obj_ptr_arr[i].h = stats.at<int>(i, cv::CC_STAT_HEIGHT);
+                    obj_ptr_arr[i].area = stats.at<int>(i, cv::CC_STAT_AREA);
+                    obj_ptr_arr[i].cx = centroids.at<double>(i, 0);
+                    obj_ptr_arr[i].cy = centroids.at<double>(i, 1);
+
+                    if (i > 0)
+                    {
+                        std::cout << "Label " << i << " - pos: (" << obj_ptr_arr[i].x << "," << obj_ptr_arr[i].y << ") center: (" << obj_ptr_arr[i].cx << "," << obj_ptr_arr[i].cy
+                                  << ") size: " << obj_ptr_arr[i].w << " x " << obj_ptr_arr[i].h << " area: " << obj_ptr_arr[i].area << std::endl;
+                    }
+                    else {
+                        std::cout << "Background - pos: (" << obj_ptr_arr[i].x << "," << obj_ptr_arr[i].y << ") center: (" << obj_ptr_arr[i].cx << "," << obj_ptr_arr[i].cy
+                                  << ") size: " << obj_ptr_arr[i].w << " x " << obj_ptr_arr[i].h << " area: " << obj_ptr_arr[i].area << std::endl;
+                    }
+
+
+
 #if defined(IMSHOW_SEG) || defined(IMSHOW_CAP)
-        for (int i = 0; i < marker_count; i++)
-        {
-
-
-            //        testvec[i] = rect;
-            //           testvec.push_back(rect);
-
-
-            int area = stats.at<int>(i, cv::CC_STAT_AREA);
-            double cx = centroids.at<double>(i, 0);
-            double cy = centroids.at<double>(i, 1);
-            cv::Rect rect = cv::Rect(stats.at<int>(i, cv::CC_STAT_LEFT), stats.at<int>(i, cv::CC_STAT_TOP),
-                                     stats.at<int>(i, cv::CC_STAT_WIDTH), stats.at<int>(i, cv::CC_STAT_HEIGHT));
-
-            cv::rectangle(markers, rect, cv::Scalar(0), 1);
-            cv::putText(markers, std::to_string((int)(mm_per_pix*rect.width))+" x "+std::to_string((int)(mm_per_pix*rect.height)),
-                        cv::Point(rect.x, rect.y), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
-            if (i > 0)
-            {
-                std::cout << "Label " << i << " - pos: (" << rect.x << "," << rect.y << ") center: (" << cx << "," << cy
-                          << ") size: " << rect.width << " x " << rect.height << " area: " << area << std::endl;
-            }
-            else {
-                std::cout << "Background - pos: (" << rect.x << "," << rect.y << ") center: (" << cx << "," << cy
-                          << ") size: " << rect.width << " x " << rect.height << " area: " << area << std::endl;
-            }
-        }
+                    cv::rectangle(marker, cv::Rect(obj_ptr_arr[i].x, obj_ptr_arr[i].y, obj_ptr_arr[i].w, obj_ptr_arr[i].h), cv::Scalar(0), 1);
+                    cv::putText(marker, std::to_string((int)(mm_per_pix * obj_ptr_arr[i].w))+" x "+std::to_string((int)(mm_per_pix * obj_ptr_arr[i].h)),
+                                cv::Point(obj_ptr_arr[i].x, obj_ptr_arr[i].y), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
 #endif
+                }
+
+
+                // Write
+                m_tracked_objects_buf[m_objects_write_idx++] = obj_ptr_arr;
+                if (m_objects_write_idx == TOBJ_BUF_SIZE)
+                    m_objects_write_idx = 0;
+                std::cout << "(OpenCV segmentation) Increased write index: " << m_objects_write_idx << " size " << marker_count << std::endl;
 
 
 
-//                // Update Multitracker
-//                if (!tracker)
-//                {
-//                    for(int i=0; i < marker_count; i++)
-//                    {
-//                        std::cout << "tracker added " << i << std::endl;
-//                        multiTracker->add(createTrackerByName("CSRT"), marker, cv::Rect2d(stats.at<int>(i, cv::CC_STAT_LEFT), stats.at<int>(i, cv::CC_STAT_TOP),
-//                                                                                         stats.at<int>(i, cv::CC_STAT_WIDTH), stats.at<int>(i, cv::CC_STAT_HEIGHT) ));
-//                    }
-//                }
 
-//                if (!multiTracker->update(color))
-//                {
-//                    std::cout << "tracker not updated" << std::endl;
-//                }
-//                else
-//                {
-//                    std::cout << "tracker updated" << std::endl;
-//                    // draw tracked objects
-//                    for(unsigned i=0; i<multiTracker->getObjects().size(); i++)
-//                    {
-//                        std::cout << "tracker added rect " << i << ": " << multiTracker->getObjects()[i] << std::endl;
-//                        rectangle(color, multiTracker->getObjects()[i], cv::Scalar(0), 10);
-//                    }
-//                }
-//                cv::imshow("tracker", color);
-//                cv::waitKey(1);
+                //                // Update Multitracker
+                //                if (!tracker)
+                //                {
+                //                    for(int i=0; i < marker_count; i++)
+                //                    {
+                //                        std::cout << "tracker added " << i << std::endl;
+                //                        multiTracker->add(createTrackerByName("CSRT"), marker, cv::Rect2d(stats.at<int>(i, cv::CC_STAT_LEFT), stats.at<int>(i, cv::CC_STAT_TOP),
+                //                                                                                         stats.at<int>(i, cv::CC_STAT_WIDTH), stats.at<int>(i, cv::CC_STAT_HEIGHT) ));
+                //                    }
+                //                }
+
+                //                if (!multiTracker->update(color))
+                //                {
+                //                    std::cout << "tracker not updated" << std::endl;
+                //                }
+                //                else
+                //                {
+                //                    std::cout << "tracker updated" << std::endl;
+                //                    // draw tracked objects
+                //                    for(unsigned i=0; i<multiTracker->getObjects().size(); i++)
+                //                    {
+                //                        std::cout << "tracker added rect " << i << ": " << multiTracker->getObjects()[i] << std::endl;
+                //                        rectangle(color, multiTracker->getObjects()[i], cv::Scalar(0), 10);
+                //                    }
+                //                }
+                //                cv::imshow("tracker", color);
+                //                cv::waitKey(1);
 
 
 
@@ -432,9 +447,15 @@ public:
         {
             m_capture_buf[i] = new cv::Mat[2];
         }
-        //        cv::Mat* twodim [MARKER_BUF_SIZE][2];
         m_capture_write_idx = 0;
         m_marker_read_idx = 0;
+
+        m_tracked_objects_buf = new tracked_object*[TOBJ_BUF_SIZE];
+        for (int i=0; i<TOBJ_BUF_SIZE; i++)
+        {
+            m_tracked_objects_buf[i] = new tracked_object;
+        }
+        m_objects_write_idx = 0;
 
 
         m_capture_thread = std::thread(&OcvDevice::capture_thread_func, this);
@@ -448,6 +469,12 @@ public:
             delete[] m_capture_buf[i];
         }
         delete[] m_capture_buf;
+
+        for (int i=0; i<TOBJ_BUF_SIZE; i++)
+        {
+            delete[] m_tracked_objects_buf[i];
+        }
+        delete[] m_tracked_objects_buf;
     }
 };
 

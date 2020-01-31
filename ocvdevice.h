@@ -219,6 +219,10 @@ private:
 #endif
                 m_marker_mutex.unlock();
 
+#if (VERBOSE > 1)
+                std::cout << "Before watershed: " << std::chrono::duration_cast
+                             <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
+#endif
                 // Segmenting by watershed algorithm
                 marker.convertTo(marker, CV_32S);
                 cv::watershed(color, marker); // 6-20 ms
@@ -270,8 +274,6 @@ private:
 #ifdef IMSHOW_SEG
                 cv::imshow("Segmented image", marker*(255/elements));
 #endif
-                // Write
-
 
                 std::cout << "(OpenCV segmentation) Total took: " << std::chrono::duration_cast
                              <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;

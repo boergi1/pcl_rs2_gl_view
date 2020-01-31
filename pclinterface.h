@@ -56,25 +56,21 @@ private:
 
     void pc_proc_thread_func()
     {
-
         std::cout << "PCL thread started # " << std::this_thread::get_id() << std::endl;
         while (m_running)
         {
-
-            // std::cout << "pointcloud processing thread running" << std::endl;
             if (m_clouds_read_idx != m_clouds_write_idx)
             {
                 std::cout << "debug loop" << std::endl;
                 // Read from pcl::PointCloud buffer
                 m_pcl_cvt_mtx->lock();
                 m_proc_cloud = m_clouds_buffer.at(m_clouds_read_idx++);
-                if (m_clouds_read_idx == CLOUD_BUF_SIZE-1)
+                if (m_clouds_read_idx == BUF_SIZE_CLOUDS-1)
                     m_clouds_read_idx = 0;
                 m_pcl_cvt_mtx->unlock();
                 cout << "(PCL) Increased read index: " << m_clouds_read_idx << " size " << m_proc_cloud->size() << endl;
 
                 // PCL processing
-
                 pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
                 pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
                 pcl::SACSegmentation<pcl::PointXYZ> seg;
@@ -127,21 +123,12 @@ private:
                     std::cerr << "Found clusters: " << cluster_indices.size() << std::endl;
                 }
 
-
-
-
-
-
-
             }
             else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(PROC_DELAY));
+                std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_PROC));
             }
-
-
-
-
         }
+
     }
 
 public:
@@ -196,44 +183,16 @@ public:
         //    viewer.addSphere (o, 0.25, "sphere", 0);
     }
 
-    //    void updatePointCloud (pcl::visualization::PCLVisualizer& viewer)
-    //    {
-    //        // auto start = chrono::steady_clock::now();
-    //        std::cout << "PCL visualization started # " << std::this_thread::get_id() << std::endl;
-
-
-    //        if(!viewer.updatePointCloud(m_proc_cloud, "rs cloud"))
-    //        {
-    //            if (!m_proc_cloud->empty())
-    //            {
-    //                viewer.addPointCloud(m_proc_cloud, "rs cloud");
-    //                viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "rs cloud");
-    //                //  viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT_JET, 0, 255, "rs_cloud" );
-    ////                viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT,
-    ////                                                        pcl::visualization::PCL_VISUALIZER_LUT_JET, "rs_cloud");
-    //            }
-    //        }
-    //        viewer.spinOnce (10);
-    //        //  auto end = chrono::steady_clock::now();
-    //        //   cout << "View thread took " << chrono::duration_cast<chrono::milliseconds>(end-start).count() << " ms" << endl;
-
-
-    //    }
-
     void startThread()
     {
         if (m_clouds_buf_step > 0)
             m_pc_proc_thread = std::thread(&PclInterface::pc_proc_thread_func, this);
         else std::cout << "PC thread not started" << std::endl;
-        //        pcl::visualization::CloudViewer m_pcl_viewer("Cloud Viewer");
-        //  m_pcl_viewer = pcl::visualization::CloudViewer("viewer");
-
-
-        //    pcl_viewer.runOnVisualizationThreadOnce (&PclInterface::initPcViewer);
-        // viewer_callback
+#if (PCL_VIEWER > 0)
         m_pcl_viewer.runOnVisualizationThreadOnce (viewer_callback);
-        m_pcl_viewer.runOnVisualizationThread(viewer_update_callback);
-        //        pcl_viewer.runOnVisualizationThread(&PclInterface::updatePointCloud);
+        m_pcl_viewer.runOnVisualizationThread (viewer_update_callback);
+#endif
+
         //        while (!m_pcl_viewer.wasStopped ())
         //        {
         //            //  std::chrono::steady_clock::now();

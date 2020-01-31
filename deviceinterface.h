@@ -55,7 +55,7 @@ public:
     {
         std::cout << "Connecting OpenCV device" << std::endl;
         m_opencv_devices_dev_mtxs.push_back(new std::mutex);
-        m_ocv_mat_buffers.push_back(new cv::Mat[MAT_BUF_SIZE]);
+        m_ocv_mat_buffers.push_back(new cv::Mat[BUF_SIZE_MATS]);
         m_ocv_write_indexes.push_back(0);
         m_opencv_devices.push_back(new OcvDevice(idx, m_opencv_devices_dev_mtxs.back(),
                                                  m_ocv_mat_buffers.back(), m_ocv_write_indexes.back()));

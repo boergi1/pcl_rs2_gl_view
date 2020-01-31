@@ -79,7 +79,7 @@ public:
             *m_points_write_idx_ref = *m_points_write_idx_ref + 1;
             //   m_rs2_points_buf_ref[*m_points_write_idx_ref++] = m_curr_rs2_points_cpu;
             std::cout << "(Frames) Increased write index (cpu): " << *m_points_write_idx_ref << " size " << m_curr_rs2_points_cpu.size() << std::endl;
-            if (*m_points_write_idx_ref == POINT_BUF_SIZE-1)
+            if (*m_points_write_idx_ref == BUF_SIZE_POINTS-1)
                 *m_points_write_idx_ref = 0;
             //  rs2points_buf_mtx.unlock();
             m_mutex_ref->unlock();

@@ -61,7 +61,7 @@ private:
                 m_points_mutex_ref->lock();
                 rs2::points points = m_points_buf_ref[ *m_points_read_idx_ref ];
                 *m_points_read_idx_ref = *m_points_read_idx_ref + 1;
-                if (*m_points_read_idx_ref == POINT_BUF_SIZE-1)
+                if (*m_points_read_idx_ref == BUF_SIZE_POINTS-1)
                     *m_points_read_idx_ref = 0;
                 cout << "(Converter) Increased read index: " << *m_points_read_idx_ref << " size " << points.size() << endl;
                 m_points_mutex_ref->unlock();
@@ -74,14 +74,14 @@ private:
                  m_clouds_buf_ref->at(*m_clouds_write_idx_ref) = converted_cloud; // m_current_cloud->makeShared()
                 auto cloud_size =  m_clouds_buf_ref->at(*m_clouds_write_idx_ref)->size();
                 *m_clouds_write_idx_ref = *m_clouds_write_idx_ref + 1;
-                if (*m_clouds_write_idx_ref == POINT_BUF_SIZE-1)
+                if (*m_clouds_write_idx_ref == BUF_SIZE_POINTS-1)
                     *m_clouds_write_idx_ref = 0;
                 cout << "(Converter) Increased write index: " << *m_clouds_write_idx_ref << " size " << cloud_size << endl;
                 m_clouds_mutex_ref->unlock();
 
             }
             else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(CONV_DELAY));
+                std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_CONV));
             }
 
             //  *m_points_write_idx_ref = *m_points_write_idx_ref+1;
@@ -190,7 +190,7 @@ private:
     }
 public:
     Rs2_PCL_Converter(DeviceInterface* in_interface_ref, PclInterface* out_interface_ref ,size_t device_count)
-        : m_current_cloud(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_WIDTH,RS_FRAME_HEIGHT))
+        : m_current_cloud(new pcl::PointCloud<pcl::PointXYZ>(FRAME_WIDTH_RS,FRAME_HEIGHT_RS))
     {
         // m_ref_interface = interface_ref;
         rs2_device_count = device_count;
@@ -209,7 +209,7 @@ public:
 
         //  boost::shared_ptr<>
 
-        m_clouds_buf_ref->resize(CLOUD_BUF_SIZE);
+        m_clouds_buf_ref->resize(BUF_SIZE_CLOUDS);
         //  m_clouds_buffer.push_back( m_current_cloud->makeShared() );
 
     }

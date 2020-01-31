@@ -59,7 +59,7 @@ size_t DeviceInterface::connectRealSenseDevices()
 
         for (uint32_t i=0; i < device_count; i++) {
             rs2::device rs2_device =  m_rs2_device_list[i];
-            m_rs2_points_buffers[i] = new rs2::points[POINT_BUF_SIZE];
+            m_rs2_points_buffers[i] = new rs2::points[BUF_SIZE_POINTS];
             //  m_pcl_clouds_buffers[i] = pcl::PointCloud<pcl::PointXYZ>::Ptr();
             m_rs2_dev_mtxs[i] = new std::mutex();
             //  m_rs2_write_indexes[i] = new size_t(0);

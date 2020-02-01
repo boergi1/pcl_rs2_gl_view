@@ -1,33 +1,36 @@
 #ifndef FORMAT_H
 #define FORMAT_H
 
-#define VERBOSE 2
-
+// Verbosity level
+#define VERBOSE 0
+// Realsense acquisition
 #define FRAME_WIDTH_RS 1280 //1280 //640
 #define FRAME_HEIGHT_RS 720 //720 //480
 #define FRAME_RATE_RS 15 //15 //30
 #define FRAME_PERIOD_RS 1000/FRAME_RATE_RS
-
+// OpenCV acquisition
 #define FRAME_WIDTH_CV 1280  //1600
 #define FRAME_HEIGHT_CV 720 //1200
 #define FRAME_RATE_CV 10 //5
-
-#define DELAY_CONV FRAME_PERIOD_RS/2
-#define DELAY_PROC DELAY_CONV
-#define DELAY_SEGM 100
-
+#define FRAME_PERIOD_CV 1000/FRAME_RATE_CV
+// Buffer sizes
 #define BUF_SIZE_POINTS 100
 #define BUF_SIZE_CLOUDS 100
 #define BUF_SIZE_MATS 100
 #define BUF_SIZE_CVCAP 100
 #define BUF_SIZE_TOBJ 100
-
+// Thread idle delays
+#define DELAY_CONV FRAME_PERIOD_RS/2
+#define DELAY_PROC FRAME_PERIOD_RS/2
+#define DELAY_SEGM FRAME_PERIOD_CV/2
+#define DELAY_TRAC FRAME_PERIOD_CV/2
+// Measuring refs
 #define REF_PIXEL 60
 #define REF_SIZE_MM 26
-
-
+// Toggle viewers
 #define PCL_VIEWER 1
 #define IMSHOW_CAP 0
 #define IMSHOW_SEG 0
+#define IMSHOW_TRA 0
 
 #endif // FORMAT_H

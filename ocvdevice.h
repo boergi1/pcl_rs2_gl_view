@@ -22,28 +22,15 @@
 class OcvDevice
 {
 private:
-    std::chrono::time_point<std::chrono::_V2::steady_clock> m_start_time_cap;
-    std::chrono::time_point<std::chrono::_V2::steady_clock> m_start_time_seg;
-    std::chrono::time_point<std::chrono::_V2::steady_clock> m_start_time_tra;
-
-
-    bool m_capture_running = true;
-    std::thread m_capture_thread;
-    std::thread m_segmentation_thread;
-    std::thread m_tracking_thread;
-
+    cv::VideoCapture* m_capture;
     const double mm_per_pix = static_cast<double>(REF_SIZE_MM)/static_cast<double>(REF_PIXEL);
 
-    cv::VideoCapture* m_capture;
-
-    std::vector<std::string> trackerTypes = {"BOOSTING", "MIL", "KCF", "TLD", "MEDIANFLOW", "GOTURN", "MOSSE", "CSRT"};
-
     // internal buffers and mutexes
-    cv::Mat** m_capture_buf;
-    size_t m_capture_write_idx, m_marker_read_idx;
+    cv::Mat** m_cvcap_buf;
+    size_t m_cvcap_write_idx, m_cvcap_read_idx;
     std::mutex m_marker_mutex;
 
-    tracked_object** m_tracked_objects_buf;
+    TrackedObject* m_tracked_objects_buf;
     size_t m_objects_write_idx, m_objects_read_idx;
     std::mutex m_objects_mutex;
 
@@ -53,31 +40,17 @@ private:
     cv::Mat* m_ocv_mat_buf_ref;
     size_t* m_mat_write_idx_ref;
 
-    cv::Ptr<cv::Tracker> createTrackerByName(std::string trackerType)
-    {
+    // threads
+    std::thread m_capture_thread;
+    std::thread m_segmentation_thread;
+    std::thread m_tracking_thread;
 
-        cv::Ptr<cv::Tracker> tracker;
-        if (trackerType ==  trackerTypes[0])
-            tracker = cv::TrackerBoosting::create();
-        else if (trackerType == trackerTypes[1])
-            tracker = cv::TrackerMIL::create();
-        else if (trackerType == trackerTypes[2])
-            tracker = cv::TrackerKCF::create();
-        else if (trackerType == trackerTypes[3])
-            tracker = cv::TrackerTLD::create();
-        else if (trackerType == trackerTypes[4])
-            tracker = cv::TrackerMedianFlow::create();
-        else if (trackerType == trackerTypes[5])
-            tracker = cv::TrackerGOTURN::create();
-        else if (trackerType == trackerTypes[6])
-            tracker = cv::TrackerMOSSE::create();
-        else if (trackerType == trackerTypes[7])
-            tracker = cv::TrackerCSRT::create();
-        else {
-            std::cerr << "Incorrect tracker name" << std::endl;
-        }
-        return tracker;
-    }
+    // debug variables
+#if (VERBOSE > 0)
+    std::chrono::time_point<std::chrono::_V2::steady_clock> m_start_time_cap;
+    std::chrono::time_point<std::chrono::_V2::steady_clock> m_start_time_seg;
+    std::chrono::time_point<std::chrono::_V2::steady_clock> m_start_time_tra;
+#endif
 
     void capture_thread_func()
     {
@@ -91,7 +64,10 @@ private:
                   << m_capture->get(cv::CAP_PROP_FRAME_HEIGHT) << " at " << m_capture->get(cv::CAP_PROP_FPS) << " fps" << std::endl;
 
         if (m_capture->isOpened())
+        {
             m_segmentation_thread = std::thread(&OcvDevice::segmentation_thread_func, this);
+            m_tracking_thread = std::thread(&OcvDevice::tracking_thread_func, this);
+        }
 #if (IMSHOW_CAP > 0)
         while( m_capture->isOpened() && cv::waitKey(1) != 27 )  // remove imshow and waitKey later
 #else
@@ -100,7 +76,9 @@ private:
         {
             // next image
             m_capture->read(image);
+#if (VERBOSE > 0)
             m_start_time_cap = std::chrono::steady_clock::now();
+#endif
             // calculate markers
             cv::Mat markers = cv::Mat::zeros(image.size(), CV_32S);
 #if (IMSHOW_CAP > 0)
@@ -109,17 +87,181 @@ private:
             prepareObjectMarkers(image, markers);
             // write to buffer
             m_marker_mutex.lock();
-            m_capture_buf[m_capture_write_idx][0] = image;
-            m_capture_buf[m_capture_write_idx++][1] = markers;
-            if (m_capture_write_idx == BUF_SIZE_CVCAP)
-                m_capture_write_idx = 0;
-            std::cout << "(OpenCV capture) Increased write index: " << m_capture_write_idx << " size0 " << image.size() << " type0 " << image.type() << " size1 "
+            m_cvcap_buf[m_cvcap_write_idx][0] = image;
+            m_cvcap_buf[m_cvcap_write_idx++][1] = markers;
+            if (m_cvcap_write_idx == BUF_SIZE_CVCAP)
+                m_cvcap_write_idx = 0;
+#if (VERBOSE > 0)
+            std::cout << "(OpenCV capture) Increased write index: " << m_cvcap_write_idx << " size0 " << image.size() << " type0 " << image.type() << " size1 "
                       << markers.size() << " type1 " << markers.type() << std::endl;
+#endif
             m_marker_mutex.unlock();
-            std::cout << "(OpenCV capture) Total took: " << std::chrono::duration_cast
-                         <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_cap).count() << " ms" << std::endl;
+#if (VERBOSE > 0)
+            std::cout << "(OpenCV capture) Total took: " << std::chrono::duration_cast<std::chrono::milliseconds>
+                         (std::chrono::steady_clock::now()-m_start_time_cap).count() << " ms" << std::endl;
+#endif
         }
         std::cout << "Capture thread is exiting" << std::endl;
+    }
+
+    void segmentation_thread_func()
+    {
+        std::cout << "OpenCV segmentation thread started # " << std::this_thread::get_id() << std::endl;
+#if (IMSHOW_SEG > 0)
+        while( m_capture->isOpened() && cv::waitKey(1) != 27 )  // remove imshow and waitKey later
+#else
+        while( m_capture->isOpened() )
+#endif
+        {
+            if (m_cvcap_read_idx != m_cvcap_write_idx)
+            {
+#if (VERBOSE > 0)
+                m_start_time_seg = std::chrono::steady_clock::now();
+#endif
+                // Get segmentation markers
+                m_marker_mutex.lock();
+                cv::Mat color = m_cvcap_buf[m_cvcap_read_idx][0];
+                cv::Mat marker = m_cvcap_buf[m_cvcap_read_idx++][1];
+                if (m_cvcap_read_idx == BUF_SIZE_POINTS)
+                    m_cvcap_read_idx = 0;
+#if (VERBOSE > 0)
+                std::cout << "(OpenCV segmentation) Increased read index: " << m_cvcap_read_idx << " size0 " << color.size() << " type0 " << color.type() << " size1 "
+                          << marker.size() << " type1 " << marker.type() << std::endl;
+#endif
+                m_marker_mutex.unlock();
+#if (VERBOSE > 1)
+                std::cout << "Before watershed: " << std::chrono::duration_cast
+                             <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
+#endif
+                // Segmenting by watershed algorithm
+                marker.convertTo(marker, CV_32S);
+                cv::watershed(color, marker); // 6-20 ms
+                marker.convertTo(marker, CV_8U);
+#if (VERBOSE > 1)
+                std::cout << "After watershed: " << std::chrono::duration_cast
+                             <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
+#endif
+                // Get objects positions
+                cv::Mat labels, stats, centroids;
+                int marker_count = cv::connectedComponentsWithStats(marker, labels, stats, centroids, 4, CV_32S); // 10-15 ms
+                tracked_object* obj_ptr_arr = new tracked_object[marker_count];
+
+                for (int i = 0; i < marker_count; i++)
+                {
+                    obj_ptr_arr[i].x = stats.at<int>(i, cv::CC_STAT_LEFT);
+                    obj_ptr_arr[i].y = stats.at<int>(i, cv::CC_STAT_TOP);
+                    obj_ptr_arr[i].w = stats.at<int>(i, cv::CC_STAT_WIDTH);
+                    obj_ptr_arr[i].h = stats.at<int>(i, cv::CC_STAT_HEIGHT);
+                    obj_ptr_arr[i].area = stats.at<int>(i, cv::CC_STAT_AREA);
+                    obj_ptr_arr[i].cx = centroids.at<double>(i, 0);
+                    obj_ptr_arr[i].cy = centroids.at<double>(i, 1);
+#if (IMSHOW_SEG > 0) || (IMSHOW_CAP > 0)
+                    cv::rectangle(marker, cv::Rect(obj_ptr_arr[i].x, obj_ptr_arr[i].y, obj_ptr_arr[i].w, obj_ptr_arr[i].h), cv::Scalar(0), 1);
+                    cv::putText(marker, std::to_string((int)(mm_per_pix * obj_ptr_arr[i].w))+" x "+std::to_string((int)(mm_per_pix * obj_ptr_arr[i].h)),
+                                cv::Point(obj_ptr_arr[i].x, obj_ptr_arr[i].y), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
+#endif
+                }
+
+                // Write tracked objects
+                m_objects_mutex.lock();
+                m_tracked_objects_buf[m_objects_write_idx++] = TrackedObject(marker_count, obj_ptr_arr);
+                if (m_objects_write_idx == BUF_SIZE_TOBJ)
+                    m_objects_write_idx = 0;
+#if (VERBOSE > 0)
+                std::cout << "(OpenCV segmentation) Increased write index: " << m_objects_write_idx << " size array of "
+                          << marker_count << std::endl;
+#endif
+                m_objects_mutex.unlock();
+
+#if (IMSHOW_SEG > 0)
+                cv::imshow("Segmented image", marker*(255/elements));
+#endif
+#if (VERBOSE > 0)
+                std::cout << "(OpenCV segmentation) Total took: " << std::chrono::duration_cast<std::chrono::milliseconds>
+                             (std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
+#endif
+            }
+            else std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_SEGM));
+        }
+
+        std::cout << "Segmentation thread is exiting" << std::endl;
+    }
+
+    void tracking_thread_func()
+    {
+        std::cout << "OpenCV tracking thread started # " << std::this_thread::get_id() << std::endl;
+
+        while( m_capture->isOpened() )
+        {
+            if (m_objects_read_idx != m_objects_write_idx)
+            {
+#if (VERBOSE > 0)
+                m_start_time_tra = std::chrono::steady_clock::now();
+#endif
+                // Read tracked objects
+                m_objects_mutex.lock();
+                TrackedObject tr_obj = m_tracked_objects_buf[m_objects_read_idx++];
+                if (m_objects_read_idx == BUF_SIZE_POINTS)
+                    m_objects_read_idx = 0;
+#if (VERBOSE > 0)
+                std::cout << "(OpenCV tracking) Increased read index: " << m_objects_read_idx << " size array of "
+                          << tr_obj.getSize() << std::endl;
+#endif
+                m_objects_mutex.unlock();
+
+                // Track objects
+                tracked_object* tr_obj_ptr = tr_obj.getTrackedObjects();
+
+                for (int i = 0; i < tr_obj.getSize(); i++) {
+
+
+#if (VERBOSE > 1)
+                    if (i > 0)
+                        std::cout << "Label " << i << " - pos: (" << tr_obj_ptr[i].x << "," << tr_obj_ptr[i].y << ") center: (" << tr_obj_ptr[i].cx << ","
+                                  << tr_obj_ptr[i].cy << ") size: " << tr_obj_ptr[i].w << " x " << tr_obj_ptr[i].h << " area: " << tr_obj_ptr[i].area << std::endl;
+                    else
+                        std::cout << "Background - pos: (" << tr_obj_ptr[i].x << "," << tr_obj_ptr[i].y << ") center: (" << tr_obj_ptr[i].cx << ","
+                                  << tr_obj_ptr[i].cy << ") size: " << tr_obj_ptr[i].w << " x " << tr_obj_ptr[i].h << " area: " << tr_obj_ptr[i].area << std::endl;
+#endif
+                }
+
+#if (VERBOSE > 0)
+                std::cout << "(OpenCV tracking) Total took: " << std::chrono::duration_cast<std::chrono::milliseconds>
+                             (std::chrono::steady_clock::now()-m_start_time_tra).count() << " ms" << std::endl;
+#endif
+
+#if (IMSHOW_TRA > 0)
+#endif
+
+            }
+            else std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_TRAC));
+        }
+    }
+
+public:
+    //     Rs2Device(rs2::device &dev, std::mutex* mutex, rs2::points* buffer, size_t& write_idx_ref);
+    OcvDevice(int idx, std::mutex* mutex, cv::Mat* buffer, size_t& write_idx_ref)
+    {
+        m_cam_idx = idx;
+        m_mutex_ref = mutex;
+        m_ocv_mat_buf_ref = buffer;
+        m_mat_write_idx_ref = &write_idx_ref;
+
+        std::cout << "New OpenCV device instance: " << m_cam_idx << " buffer: " << m_ocv_mat_buf_ref << " mutex: " << m_mutex_ref << std::endl;
+
+        // initialize buffers
+        m_cvcap_buf = new cv::Mat*[BUF_SIZE_CVCAP];
+        for (int i=0; i<BUF_SIZE_CVCAP; i++)
+        {
+            m_cvcap_buf[i] = new cv::Mat[2];
+        }
+        m_cvcap_write_idx = m_cvcap_read_idx = 0;
+
+        m_tracked_objects_buf = new TrackedObject[BUF_SIZE_TOBJ];
+        m_objects_write_idx = m_objects_read_idx = 0;
+        // Start capturing, which starts the following threads
+        m_capture_thread = std::thread(&OcvDevice::capture_thread_func, this);
+
     }
 
     void prepareObjectMarkers(cv::Mat& colorimg, cv::Mat& markers)
@@ -189,212 +331,14 @@ private:
         tmp.convertTo(markers, CV_32S);
     }
 
-    void segmentation_thread_func()
-    {
-        std::cout << "OpenCV segmentation thread started # " << std::this_thread::get_id() << std::endl;
-
-        //        while (m_marker_read_idx == m_capture_write_idx) {
-        //            std::this_thread::sleep_for(std::chrono::seconds(1));
-        //        }
-
-#if (IMSHOW_SEG > 0)
-        while( m_capture->isOpened() && cv::waitKey(1) != 27 )  // remove imshow and waitKey later
-#else
-        while( m_capture->isOpened() )
-#endif
-        {
-            if (m_marker_read_idx != m_capture_write_idx)
-            {
-                m_start_time_seg = std::chrono::steady_clock::now();
-
-                // Get segmentation markers
-                m_marker_mutex.lock();
-                cv::Mat color = m_capture_buf[m_marker_read_idx][0];
-                cv::Mat marker = m_capture_buf[m_marker_read_idx++][1];
-                if (m_marker_read_idx == BUF_SIZE_POINTS)
-                    m_marker_read_idx = 0;
-#if (VERBOSE > 0)
-                std::cout << "(OpenCV segmentation) Increased read index: " << m_marker_read_idx << " size0 " << color.size() << " type0 " << color.type() << " size1 "
-                          << marker.size() << " type1 " << marker.type() << std::endl;
-#endif
-                m_marker_mutex.unlock();
-
-#if (VERBOSE > 1)
-                std::cout << "Before watershed: " << std::chrono::duration_cast
-                             <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
-#endif
-                // Segmenting by watershed algorithm
-                marker.convertTo(marker, CV_32S);
-                cv::watershed(color, marker); // 6-20 ms
-                marker.convertTo(marker, CV_8U);
-#if (VERBOSE > 1)
-                std::cout << "After watershed: " << std::chrono::duration_cast
-                             <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
-#endif
-                // Get objects position
-                cv::Mat labels, stats, centroids;
-                int marker_count = cv::connectedComponentsWithStats(marker, labels, stats, centroids, 4, CV_32S); // 10-15 ms
-                tracked_object* obj_ptr_arr = new tracked_object[marker_count];
-
-                for (int i = 0; i < marker_count; i++)
-                {
-                    obj_ptr_arr[i].x = stats.at<int>(i, cv::CC_STAT_LEFT);
-                    obj_ptr_arr[i].y = stats.at<int>(i, cv::CC_STAT_TOP);
-                    obj_ptr_arr[i].w = stats.at<int>(i, cv::CC_STAT_WIDTH);
-                    obj_ptr_arr[i].h = stats.at<int>(i, cv::CC_STAT_HEIGHT);
-                    obj_ptr_arr[i].area = stats.at<int>(i, cv::CC_STAT_AREA);
-                    obj_ptr_arr[i].cx = centroids.at<double>(i, 0);
-                    obj_ptr_arr[i].cy = centroids.at<double>(i, 1);
-#if (VERBOSE > 2)
-                    if (i > 0)
-                        std::cout << "Label " << i << " - pos: (" << obj_ptr_arr[i].x << "," << obj_ptr_arr[i].y << ") center: (" << obj_ptr_arr[i].cx << ","
-                                  << obj_ptr_arr[i].cy << ") size: " << obj_ptr_arr[i].w << " x " << obj_ptr_arr[i].h << " area: " << obj_ptr_arr[i].area << std::endl;
-                    else
-                        std::cout << "Background - pos: (" << obj_ptr_arr[i].x << "," << obj_ptr_arr[i].y << ") center: (" << obj_ptr_arr[i].cx << ","
-                                  << obj_ptr_arr[i].cy << ") size: " << obj_ptr_arr[i].w << " x " << obj_ptr_arr[i].h << " area: " << obj_ptr_arr[i].area << std::endl;
-#endif
-#if (IMSHOW_SEG > 0) || (IMSHOW_CAP > 0)
-                    cv::rectangle(marker, cv::Rect(obj_ptr_arr[i].x, obj_ptr_arr[i].y, obj_ptr_arr[i].w, obj_ptr_arr[i].h), cv::Scalar(0), 1);
-                    cv::putText(marker, std::to_string((int)(mm_per_pix * obj_ptr_arr[i].w))+" x "+std::to_string((int)(mm_per_pix * obj_ptr_arr[i].h)),
-                                cv::Point(obj_ptr_arr[i].x, obj_ptr_arr[i].y), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
-#endif
-                }
-
-                // Write
-                m_objects_mutex.lock();
-                m_tracked_objects_buf[m_objects_write_idx++] = obj_ptr_arr;
-                if (m_objects_write_idx == BUF_SIZE_TOBJ)
-                    m_objects_write_idx = 0;
-#if (VERBOSE > 0)
-                std::cout << "(OpenCV segmentation) Increased write index: " << m_objects_write_idx << " size array of "
-                          << marker_count << " structs" << std::endl;
-#endif
-                m_objects_mutex.unlock();
-
-#if (IMSHOW_SEG > 0)
-                cv::imshow("Segmented image", marker*(255/elements));
-#endif
-
-                std::cout << "(OpenCV segmentation) Total took: " << std::chrono::duration_cast
-                             <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
-
-            }
-            else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_SEGM));
-            }
-
-        }
-
-        std::cout << "Segmentation thread is exiting" << std::endl;
-    }
-
-
-    int segmentObjects(cv::Mat& colorimg, cv::Mat& markers)
-    {
-        // Segmenting by watershed algorithm
-        markers.convertTo(markers, CV_32S);
-        cv::watershed(colorimg, markers); // 6-20 ms
-        markers.convertTo(markers, CV_8U);
-        // Segmenting with stats for bounding boxes
-
-        cv::Mat labels(markers.size(), CV_32S);
-        cv::Mat stats, centroids;
-        std::cout << "After watershed: " << std::chrono::duration_cast
-                     <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
-        int marker_count = cv::connectedComponentsWithStats(markers, labels, stats, centroids, 4, CV_32S); // 10-15 ms
-
-        //        std::vector<cv::Rect> testvec;
-        //        testvec.resize(marker_count);
-        //        std::vector<cv::Rect> bboxes;
-        //        bool showCrosshair = true;
-        //        bool fromCenter = false;
-
-        // cv::selectROIs("MultiTracker", markers, bboxes, showCrosshair, fromCenter);
-
-
-
-        //  return marker_count; // 25-30 ms
-#if (IMSHOW_SEG > 0) || (IMSHOW_CAP > 0)
-        for (int i = 0; i < marker_count; i++)
-        {
-
-
-            //        testvec[i] = rect;
-            //           testvec.push_back(rect);
-
-
-            int area = stats.at<int>(i, cv::CC_STAT_AREA);
-            double cx = centroids.at<double>(i, 0);
-            double cy = centroids.at<double>(i, 1);
-            cv::Rect rect = cv::Rect(stats.at<int>(i, cv::CC_STAT_LEFT), stats.at<int>(i, cv::CC_STAT_TOP),
-                                     stats.at<int>(i, cv::CC_STAT_WIDTH), stats.at<int>(i, cv::CC_STAT_HEIGHT));
-
-            cv::rectangle(markers, rect, cv::Scalar(0), 1);
-            cv::putText(markers, std::to_string((int)(mm_per_pix*rect.width))+" x "+std::to_string((int)(mm_per_pix*rect.height)),
-                        cv::Point(rect.x, rect.y), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
-            if (i > 0)
-            {
-                std::cout << "Label " << i << " - pos: (" << rect.x << "," << rect.y << ") center: (" << cx << "," << cy
-                          << ") size: " << rect.width << " x " << rect.height << " area: " << area << std::endl;
-            }
-            else {
-                std::cout << "Background - pos: (" << rect.x << "," << rect.y << ") center: (" << cx << "," << cy
-                          << ") size: " << rect.width << " x " << rect.height << " area: " << area << std::endl;
-            }
-        }
-#endif
-        return marker_count;
-    }
-
-    void tracking_thread_func()
-    {
-
-    }
-
-
-public:
-    //     Rs2Device(rs2::device &dev, std::mutex* mutex, rs2::points* buffer, size_t& write_idx_ref);
-    OcvDevice(int idx, std::mutex* mutex, cv::Mat* buffer, size_t& write_idx_ref)
-    {
-        m_cam_idx = idx;
-        m_mutex_ref = mutex;
-        m_ocv_mat_buf_ref = buffer;
-        m_mat_write_idx_ref = &write_idx_ref;
-
-        std::cout << "New OpenCV device instance: " << m_cam_idx << " buffer: " << m_ocv_mat_buf_ref << " mutex: " << m_mutex_ref << std::endl;
-
-        m_capture_buf = new cv::Mat*[BUF_SIZE_CVCAP];
-        for (int i=0; i<BUF_SIZE_CVCAP; i++)
-        {
-            m_capture_buf[i] = new cv::Mat[2];
-        }
-        m_capture_write_idx = 0;
-        m_marker_read_idx = 0;
-
-        m_tracked_objects_buf = new tracked_object*[BUF_SIZE_TOBJ];
-        for (int i=0; i<BUF_SIZE_TOBJ; i++)
-        {
-            m_tracked_objects_buf[i] = new tracked_object;
-        }
-        m_objects_write_idx = 0;
-
-
-        m_capture_thread = std::thread(&OcvDevice::capture_thread_func, this);
-        //  m_segmentation_thread = std::thread(&OcvDevice::segmentation_thread_func, this);
-
-    }
     ~OcvDevice()
     {
         for (int i=0; i<BUF_SIZE_CVCAP; i++)
         {
-            delete[] m_capture_buf[i];
+            delete[] m_cvcap_buf[i];
         }
-        delete[] m_capture_buf;
+        delete[] m_cvcap_buf;
 
-        for (int i=0; i<BUF_SIZE_TOBJ; i++)
-        {
-            delete[] m_tracked_objects_buf[i];
-        }
         delete[] m_tracked_objects_buf;
     }
 };

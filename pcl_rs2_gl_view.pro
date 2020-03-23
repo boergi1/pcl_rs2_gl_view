@@ -4,6 +4,7 @@ CONFIG -= app_bundle
 CONFIG -= qt
 
 SOURCES += \
+        customtypes.cpp \
         deviceinterface.cpp \
         main.cpp \
         ocvdevice.cpp \

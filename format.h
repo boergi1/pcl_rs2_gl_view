@@ -2,7 +2,7 @@
 #define FORMAT_H
 
 // Verbosity level
-#define VERBOSE 0
+#define VERBOSE 1
 // Realsense acquisition
 #define FRAME_WIDTH_RS 1280 //1280 //640
 #define FRAME_HEIGHT_RS 720 //720 //480
@@ -30,7 +30,9 @@
 // Toggle viewers
 #define PCL_VIEWER 1
 #define IMSHOW_CAP 0
-#define IMSHOW_SEG 0
+#define IMSHOW_SEG 1
 #define IMSHOW_TRA 0
+
+
 
 #endif // FORMAT_H

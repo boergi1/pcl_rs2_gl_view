@@ -30,8 +30,8 @@
 // Toggle viewers
 #define PCL_VIEWER 1
 #define IMSHOW_CAP 0
-#define IMSHOW_SEG 1
-#define IMSHOW_TRA 0
+#define IMSHOW_SEG 0
+#define IMSHOW_TRA 1
 
 
 

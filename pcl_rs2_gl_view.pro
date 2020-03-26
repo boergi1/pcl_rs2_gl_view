@@ -13,6 +13,7 @@ SOURCES += \
         rs2device.cpp
 
 HEADERS += \
+    b.h \
     customtypes.h \
     deviceinterface.h \
     format.h \

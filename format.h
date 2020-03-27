@@ -2,7 +2,7 @@
 #define FORMAT_H
 
 // Verbosity level
-#define VERBOSE 1
+#define VERBOSE 2
 // Realsense acquisition
 #define FRAME_WIDTH_RS 1280 //1280 //640
 #define FRAME_HEIGHT_RS 720 //720 //480
@@ -24,6 +24,7 @@
 #define DELAY_PROC FRAME_PERIOD_RS/2
 #define DELAY_SEGM FRAME_PERIOD_CV/2
 #define DELAY_TRAC FRAME_PERIOD_CV/2
+#define DELAY_SHOW FRAME_PERIOD_CV/2
 // Measuring refs
 #define REF_PIXEL 60
 #define REF_SIZE_MM 26
@@ -31,7 +32,8 @@
 #define PCL_VIEWER 1
 #define IMSHOW_CAP 0
 #define IMSHOW_SEG 0
-#define IMSHOW_TRA 1
+#define IMSHOW_TRA 0
+#define IMSHOW 1
 
 
 

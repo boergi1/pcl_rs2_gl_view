@@ -42,21 +42,20 @@ private:
     cv::Mat* m_ocv_mat_buf_ref;
     size_t* m_mat_write_idx_ref;
 
-
-
     // threads
     std::thread m_capture_thread;
     std::thread m_segmentation_thread;
     std::thread m_tracking_thread;
-
-    // tracked objects
-    //    TrackedObjects m_obj_centroids;
-    //    TrackedObjects m_in_centroids;
+    std::thread m_imshow_thread;
 
     tracked_object_t *m_input_objects;
     std::vector<tracked_object_t> *m_tracked_objects;
-    int m_max_disappeared = 0;
+    int m_max_disappeared = 5;
     uint16_t m_id_ctr = 0;
+
+    // current mats for imshow
+    cv::Mat m_current_mat_seg, m_current_mat_tra;
+    std::mutex m_mat_seg_mtx, m_mat_tra_mtx;
 
     // debug variables
 #if (VERBOSE > 0)
@@ -80,6 +79,9 @@ private:
         {
             m_segmentation_thread = std::thread(&OcvDevice::segmentation_thread_func, this);
             m_tracking_thread = std::thread(&OcvDevice::tracking_thread_func, this);
+#if (IMSHOW > 0 && VERBOSE > 0)
+            m_imshow_thread = std::thread(&OcvDevice::imshow_thread_func, this);
+#endif
         }
 #if (IMSHOW_CAP > 0)
         while( m_capture->isOpened() && cv::waitKey(1) != 27 )  // remove imshow and waitKey later
@@ -121,11 +123,7 @@ private:
     {
         std::cout << "OpenCV segmentation thread started # " << std::this_thread::get_id() << std::endl;
         tracked_object_t* tmp_tr_obj;
-#if (IMSHOW_SEG > 0)
-        while( m_capture->isOpened() && cv::waitKey(1) != 27 )
-#else
         while( m_capture->isOpened() )
-#endif
         {
             if (m_cvcap_read_idx != m_cvcap_write_idx)
             {
@@ -172,11 +170,16 @@ private:
                     tmp_tr_obj[i].cy = centroids.at<double>(i, 1);
                     tmp_tr_obj[i].unique_id = -1;
                     tmp_tr_obj[i].lost_ctr = 0;
-#if (IMSHOW_SEG > 0) || (IMSHOW_CAP > 0)
+#if (IMSHOW > 0 && VERBOSE > 0)
                     // Draw markers on cv window
-                    cv::rectangle(marker, cv::Rect(tmp_tr_obj[i].x, tmp_tr_obj[i].y, tmp_tr_obj[i].w, tmp_tr_obj[i].h), cv::Scalar(0), 1);
-                    cv::putText(marker, std::to_string((int)(mm_per_pix * tmp_tr_obj[i].w))+" x "+std::to_string((int)(mm_per_pix * tmp_tr_obj[i].h)),
-                                cv::Point(tmp_tr_obj[i].x, tmp_tr_obj[i].y), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
+                    cv::rectangle(marker, cv::Rect(tmp_tr_obj[i].x, tmp_tr_obj[i].y,
+                                                   tmp_tr_obj[i].w, tmp_tr_obj[i].h), cv::Scalar(0), 1);
+                    cv::putText(marker, std::to_string(static_cast<int>(mm_per_pix * tmp_tr_obj[i].w))
+                                + " x "+std::to_string(static_cast<int>(mm_per_pix * tmp_tr_obj[i].h)),
+                                cv::Point(tmp_tr_obj[i].x, tmp_tr_obj[i].y),
+                                cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
+                    cv::circle(marker, cv::Point(roundToInt(tmp_tr_obj[i].cx), roundToInt(tmp_tr_obj[i].cy)),
+                               10, cv::Scalar(255), -1);
 #endif
                 }
                 // Write segmented objects
@@ -188,12 +191,16 @@ private:
                 std::cout << "(OpenCV segmentation) Increased queue size: " << m_tracked_objects_buf->tobj_ptr_queue.size() << " size: array of "
                           << marker_count << std::endl;
 #endif
+#if (IMSHOW > 0 && VERBOSE > 0)
+                cv::putText(marker, std::to_string(marker_count),
+                            cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
+                m_mat_seg_mtx.lock();
+                m_current_mat_seg = marker*(255/marker_count);
+                m_mat_seg_mtx.unlock();
+#endif
 #if (VERBOSE > 0)
                 std::cout << "(OpenCV segmentation) Total took: " << std::chrono::duration_cast<std::chrono::milliseconds>
                              (std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
-#endif
-#if (IMSHOW_SEG > 0)
-                cv::imshow("Segmented image", marker*(255/marker_count));
 #endif
             }
             else std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_SEGM));
@@ -234,19 +241,7 @@ private:
 #if (VERBOSE > 0)
                 std::cout << "(OpenCV tracking) Reduced queue size: " << m_tracked_objects_buf->tobj_ptr_queue.size() << " size: array of " << input_objects_size << std::endl;
 #endif
-#if (VERBOSE > 3)
-                for (size_t i = 0; i < input_objects_size; i++) {
-                    if (i > 0)
-                        std::cout << "Label " << i << " - pos: (" << m_input_objects[i].x << "," << m_input_objects[i].y << ") center: (" << m_input_objects[i].cx << ","
-                                  << m_input_objects[i].cy << ") size: " << m_input_objects[i].w << " x " << m_input_objects[i].h << " area: " << m_input_objects[i].area << std::endl;
-                    else
-                        std::cout << "Background - pos: (" << m_input_objects[i].x << "," << m_input_objects[i].y << ") center: (" << m_input_objects[i].cx << ","
-                                  << m_input_objects[i].cy << ") size: " << m_input_objects[i].w << " x " << m_input_objects[i].h << " area: " << m_input_objects[i].area << std::endl;
-                }
-#endif
-                // Track objects
-
-#if (VERBOSE > 0)
+#if (VERBOSE > 1)
                 std::cout << "Current object centroids: " << tracked_objects_size << std::endl;
                 for (size_t i = 0; i < tracked_objects_size; i++){
                     std::cout << "idx "<< i <<" #" << m_tracked_objects->at(i).unique_id << " (" << m_tracked_objects->at(i).cx
@@ -258,7 +253,7 @@ private:
                               << "," << m_input_objects[i].cy << ")" << std::endl;
                 }
 #endif
-
+                // Track objects
                 if (tracked_objects_size == 0 && input_objects_size == 0) // ||
                 {
                     // Do nothing
@@ -273,7 +268,6 @@ private:
                         auto tmp_obj = m_input_objects[i];
                         tmp_obj.unique_id = m_id_ctr++;
                         m_tracked_objects->push_back(tmp_obj);
-                        std::cout << "New all objects: idx "<< i << " #" << m_tracked_objects->back().unique_id << std::endl;
                     }
                 }
                 else if (tracked_objects_size > 0 && input_objects_size == 0)
@@ -283,16 +277,13 @@ private:
                     {
                         m_tracked_objects->at(i).lost_ctr++;
                         if (m_tracked_objects->at(i).lost_ctr >= m_max_disappeared)
-                        {
                             lost_objects.push_back(i);
-                            std::cout << "Lost all objects: " << lost_objects.back() << std::endl;
-                        }
                     }
                 }
                 else {
                     // Compute centroid distances
                     distances = centroidDistances(m_tracked_objects, m_input_objects, input_objects_size);
-#if (VERBOSE > 0)
+#if (VERBOSE > 2)
                     std::cout << "Distance matrix ( " << tracked_objects_size << " x " << input_objects_size << " ):"<< std::endl << distances << std::endl;
 #endif
                     // Find min/max distances of known objects (rows)
@@ -311,9 +302,12 @@ private:
 
                     // Sort extreme values
                     std::sort(row_min_distances.begin(), row_min_distances.end());
-                    //  std::sort(col_min_distances.begin(), col_min_distances.end());
+                    std::sort(col_min_distances.begin(), col_min_distances.end());
                     std::sort(max_distances.begin(), max_distances.end(), std::greater<std::tuple<double,int,int>>());
-#if (VERBOSE > 0)
+
+
+
+#if (VERBOSE > 1)
                     std::cout<<"Minima rows: "<< row_min_distances.size() <<std::endl;
                     for (size_t i=0;i<row_min_distances.size();i++) {
                         std::cout << std::get<0>(row_min_distances.at(i)) << " at row,col: (" << std::get<1>(row_min_distances.at(i)) << ","
@@ -330,21 +324,25 @@ private:
                                   << std::get<2>(max_distances.at(i)) << ")" << std::endl;
                     }
 #endif
-                    // Update current objects
-                    for (size_t i = 0; i < tracked_objects_size; i++)
-                    {
-                        size_t obj_idx = static_cast<size_t>(std::get<1>(row_min_distances[i]))/*row*/;
-                        size_t inp_idx = static_cast<size_t>(std::get<2>(row_min_distances[i]))/*col*/;
-                        auto tmp_obj = m_input_objects[inp_idx];
-                        tmp_obj.unique_id = m_tracked_objects->at(obj_idx).unique_id; // !!!
-                        m_tracked_objects->at(obj_idx) = tmp_obj;
-                        std::cout << "Updated object: idx " << obj_idx << " #" << m_tracked_objects->at(obj_idx).unique_id
-                                  << " x " << m_tracked_objects->at(obj_idx).cx
-                                  << " y " << m_tracked_objects->at(obj_idx).cy << std::endl;
-                    }
+                    //                    // Update current objects
+                    //                    for (size_t i = 0; i < tracked_objects_size; i++)
+                    //                    {
+                    //                        size_t obj_idx = static_cast<size_t>(std::get<1>(row_min_distances[i]))/*row*/;
+                    //                        size_t inp_idx = static_cast<size_t>(std::get<2>(row_min_distances[i]))/*col*/;
+                    //                        auto tmp_obj = m_input_objects[inp_idx];
+                    //                        tmp_obj.unique_id = m_tracked_objects->at(obj_idx).unique_id;
+                    //                        tmp_obj.lost_ctr = m_tracked_objects->at(obj_idx).lost_ctr;
+                    //                        m_tracked_objects->at(obj_idx) = tmp_obj;
+                    //#if (VERBOSE > 1)
+                    //                        std::cout << "Updated object: idx " << obj_idx << " #" << m_tracked_objects->at(obj_idx).unique_id
+                    //                                  << " x " << m_tracked_objects->at(obj_idx).cx << " y "
+                    //                                  << m_tracked_objects->at(obj_idx).cy << " lost " << m_tracked_objects->at(obj_idx).lost_ctr << std::endl;
+                    //#endif
+                    //                    }
 
                     if (tracked_objects_size > input_objects_size)
                     {
+
                         // Deregister specific objects
                         size_t to_delete = tracked_objects_size - input_objects_size;
                         for (size_t i = 0; i < to_delete; i++)
@@ -353,392 +351,278 @@ private:
                             if ( ++m_tracked_objects->at(obj_idx).lost_ctr >= m_max_disappeared)
                             {
                                 lost_objects.push_back(obj_idx);
-                                std::cout << "Lost object: idx " << lost_objects.back() << " #" << m_tracked_objects->at(obj_idx).unique_id
+#if (VERBOSE > 1)
+                                std::cout << "Deleting object: idx " << lost_objects.back() << " #" << m_tracked_objects->at(obj_idx).unique_id
                                           << " x " << m_tracked_objects->at(obj_idx).cx
                                           << " y " << m_tracked_objects->at(obj_idx).cy << std::endl;
+#endif
                             }
+#if (VERBOSE > 1)
+                            else {
+                                std::cout << "Lost object: idx " << obj_idx << " #"
+                                          << m_tracked_objects->at(obj_idx).unique_id << " lost "
+                                          << m_tracked_objects->at(obj_idx).lost_ctr << std::endl;
+
+                            }
+#endif
                         }
                     }
                     else if (tracked_objects_size < input_objects_size)
                     {
                         // Register specific objects
-                        size_t to_add = input_objects_size - tracked_objects_size;
-                        std::cout << "Debug to_add: " << to_add << std::endl;
-                        for (size_t i = 0; i < to_add; i++)
-                        {
-                            size_t inp_idx = static_cast<size_t>(std::get<2>(max_distances[i]))/*col or row?*/;
-                            std::cout << "Debug input object add: idx col " << inp_idx << " idx row " << std::get<1>(max_distances[i]) << " #" << m_id_ctr << std::endl;
-                            auto tmp_obj = m_input_objects[inp_idx]; // !!!
-                            bool skip = false;
-                            tmp_obj.unique_id = m_id_ctr++;
-
-                            // Check if same point already exists
-                            for (size_t j = 0; j < tracked_objects_size; j++)
-                            {
-                                if ( areSame(tmp_obj.x, m_tracked_objects->at(j).x) && areSame(tmp_obj.y, m_tracked_objects->at(j).y) )
-                                {
-                                    std::cerr << "Point match: idx "<< j << " #" << m_tracked_objects->at(j).unique_id << std::endl;
-                                    skip = true;
-                                }
+                        for (size_t i=0; i<col_min_distances.size(); i++) {
+                            bool new_object = true;
+                            for (size_t j=0; j<row_min_distances.size(); j++) {
+                                if ( std::get<2>(col_min_distances[i]) == std::get<2>(row_min_distances[j]))
+                                    new_object = false;
                             }
-                            //                            if (skip)
-                            //                            {
-                            //                                std::cerr << "Point skipped" << std::endl;
-                            //                            }
-                            //                            else
-                            //                            {
-                            m_tracked_objects->push_back(tmp_obj);
-                            std::cout << "New object: idx " << m_tracked_objects->size()-1 << " #" << m_tracked_objects->back().unique_id
-                                      << " x " << m_tracked_objects->back().cx
-                                      << " y " << m_tracked_objects->back().cy << std::endl;
-                            //                            }
+                            if (new_object)
+                            {
+                                size_t inp_idx = static_cast<size_t>(std::get<2>(col_min_distances[i]));
+                                auto tmp_obj = m_input_objects[inp_idx];
+                                tmp_obj.unique_id = m_id_ctr++;
+#if (VERBOSE >= 10)
+                                // Error check if same point already exists
+                                for (size_t j = 0; j < tracked_objects_size; j++)
+                                {
+                                    if ( areSame(tmp_obj.x, m_tracked_objects->at(j).x) && areSame(tmp_obj.y, m_tracked_objects->at(j).y) )
+                                    {
+                                        std::cerr << "ERROR Point match: idx "<< j << " #"
+                                                  << m_tracked_objects->at(j).unique_id << std::endl;
+                                    }
+                                }
+#endif
+                                m_tracked_objects->push_back(tmp_obj);
+#if (VERBOSE > 1)
+                                std::cout << "New object: idx " << m_tracked_objects->size()-1 << " #" << m_tracked_objects->back().unique_id
+                                          << " x " << m_tracked_objects->back().cx
+                                          << " y " << m_tracked_objects->back().cy << std::endl;
+#endif
+                            }
 
                         }
                     }
+
+                    //                Current object centroids: 3
+                    //                idx 0 #0 (620.743,360.408)+
+                    //                idx 1 #1 (644.825,358.997)+
+                    //                idx 2 #2 (560.888,367.001)+
+                    //                Current input centroids: 3
+                    //                idx 0 #-1 (634.649,357.521)
+                    //                idx 1 #-1 (640.836,359.964)++
+                    //                idx 2 #-1 (620.714,352.996)+
+                    //                Minima rows: 3
+                    //                4.10396 at row,col: (1,1) <-
+                    //                7.41184 at row,col: (0,2) <-
+                    //                61.4432 at row,col: (2,2) --
+                    //                Minima cols: 3
+                    //                10.2826 at row,col: (1,0) <-
+                    //                4.10396 at row,col: (1,1) ==
+                    //                7.41184 at row,col: (0,2) ==
+
+                    for (size_t i=0; i<col_min_distances.size(); i++) {
+                        //                            bool new_object = true;
+                        for (size_t j=0; j<row_min_distances.size(); j++) {
+
+                            //                                if ( std::get<2>(col_min_distances[i]) == std::get<2>(row_min_distances[j]))
+                            //                                    new_object = false;
+                            //                            }
+                            //                            if (new_object)
+                            //                            {
+                            //                                size_t inp_idx = static_cast<size_t>(std::get<2>(col_min_distances[i]));
+                            //                                auto tmp_obj = m_input_objects[inp_idx];
+                            //                                tmp_obj.unique_id = m_id_ctr++;
+                            //                                m_tracked_objects->push_back(tmp_obj);
+                            //#if (VERBOSE > 1)
+                            //                                std::cout << "New object: idx " << m_tracked_objects->size()-1 << " #" << m_tracked_objects->back().unique_id
+                            //                                          << " x " << m_tracked_objects->back().cx
+                            //                                          << " y " << m_tracked_objects->back().cy << std::endl;
+                            //#endif
+                        }
+                    }
+
+
+
+
+
+                    // Update current objects
+                    for (size_t i = 0; i < tracked_objects_size; i++)
+                    {
+                        size_t obj_idx = static_cast<size_t>(std::get<1>(row_min_distances[i]))/*row*/;
+                        size_t inp_idx = static_cast<size_t>(std::get<2>(row_min_distances[i]))/*col*/;
+                        auto tmp_obj = m_input_objects[inp_idx];
+                        tmp_obj.unique_id = m_tracked_objects->at(obj_idx).unique_id;
+                        tmp_obj.lost_ctr = m_tracked_objects->at(obj_idx).lost_ctr;
+                        m_tracked_objects->at(obj_idx) = tmp_obj;
+#if (VERBOSE > 1)
+                        std::cout << "Updated object: idx " << obj_idx << " #" << m_tracked_objects->at(obj_idx).unique_id
+                                  << " x " << m_tracked_objects->at(obj_idx).cx << " y "
+                                  << m_tracked_objects->at(obj_idx).cy << " lost " << m_tracked_objects->at(obj_idx).lost_ctr << std::endl;
+#endif
+                    }
                 }
 
-
-
-                //                Current object centroids: 4
-                //                idx 0 #0 (525.459,325.29)+
-                //                idx 1 #1 (70.3242,27.4778)+
-                //                idx 2 #2 (198.21,201.209)+
-                //                idx 3 #3 (718.24,389.078)+
-                //                Current input centroids: 6
-                //                idx 0 #-1 (536.979,310.492)+
-                //                idx 1 #-1 (63.7887,24.2529)+
-                //                idx 2 #-1 (197.095,204.604)+
-                //                idx 3 #-1 (722.737,390.796)+
-                //                idx 4 #-1 (487.376,115.384)
-                //                idx 5 #-1 (474.907,103.549)
-                //                Distance matrix ( 4 x 6 ):
-                //                [18.75329241444043, 551.146519046812, 349.8400092875225, 207.8691012090353, 213.3327111073276, 227.4306348644634;
-                //                 545.7686948549622, 7.287858780345206, 217.8172278279624, 746.7541937474931, 426.2153070189767, 411.6723279120752;
-                //                 355.9589650869916, 222.2221410672822, 3.573056757721439, 557.7373018397565, 301.6333191883944, 293.4258814482594;
-                //                 197.5635926765162, 749.2688337513224, 552.8317494093509, 4.813626468653316, 358.0598635052168, 375.1507217167562]
-                //                Minima rows: 4
-                //                3.57306 at row,col: (2,2)=
-                //                4.81363 at row,col: (3,3)=
-                //                7.28786 at row,col: (1,1)=
-                //                18.7533 at row,col: (0,0)=
-                //                Minima cols: 6
-                //                18.7533 at row,col: (0,0)=
-                //                7.28786 at row,col: (1,1)=
-                //                3.57306 at row,col: (2,2)=
-                //                4.81363 at row,col: (3,3)=
-                //                213.333 at row,col: (0,4)
-                //                227.431 at row,col: (0,5)
-                //                Maxima: 4
-                //                749.269 at row,col: (3,1)
-                //                746.754 at row,col: (1,3)
-                //                557.737 at row,col: (2,3)
-                //                551.147 at row,col: (0,1)
-                //                Updated object: idx 2 #2 x 197.095 y 204.604
-                //                Updated object: idx 3 #3 x 722.737 y 390.796
-                //                Updated object: idx 1 #1 x 63.7887 y 24.2529
-                //                Updated object: idx 0 #0 x 536.979 y 310.492
-                //                Debug to_add: 2
-                //                Debug input object add: idx col 1 idx row 3 #4
-                //                New object: idx 4 #4 x 722.737 y 390.796 // changed back to col after this debug
-                //                Debug input object add: idx col 3 idx row 1 #5
-                //                New object: idx 5 #5 x 63.7887 y 24.2529
-                //                (OpenCV tracking) Total took: 2 ms
-                //                (OpenCV segmentation) Increased read index: 6 size0 [1280 x 720] type0 16 size1 [1280 x 720] type1 4
-                //                Point match: idx 1 #1
-                //                Point match: idx 2 #2
-                //                Point match: idx 3 #3
-                //                Point match: idx 1 #1
-                //                Point match: idx 2 #2
-                //                Point match: idx 3 #3
-                //                (OpenCV segmentation) Increased queue size: 1 size: array of 5
-                //                (OpenCV segmentation) Total took: 11 ms
-                //                (OpenCV tracking) Reduced queue size: 0 size: array of 5
-                //                Current object centroids: 6
-                //                idx 0 #0 (536.979,310.492)
-                //                idx 1 #1 (63.7887,24.2529)
-                //                idx 2 #2 (197.095,204.604)
-                //                idx 3 #3 (722.737,390.796)
-                //                idx 4 #4 (722.737,390.796)
-                //                idx 5 #5 (63.7887,24.2529)
-
-
-
-
-                //                Current object centroids: 4
-                //                idx 0 #0 (606.825,330.88)+
-                //                idx 1 #1 (651.406,365.704)+
-                //                idx 2 #2 (1102.09,51.093)+
-                //                idx 3 #4 (327.414,213.368)+
-                //                Current input centroids: 5
-                //                idx 0 #-1 (633.966,314.625)+
-                //                idx 1 #-1 (646.71,369.032)+
-                //                idx 2 #-1 (1063.13,49.1031)   ---------
-                //                idx 3 #-1 (1100.31,59.1559)+
-                //                idx 4 #-1 (330.81,214.288)+
-                //                Distance matrix ( 4 x 5 ):
-                //                [31.63628625654063, 55.19413620798102, 536.2971307529453, 563.3474089135461, 299.6299721668431;
-                //                 53.97447862283411, 5.755576878113144, 519.3801318612116, 543.5867613354541, 354.5538409559917;
-                //                 537.2052972351736, 555.3893722994709, 39.00875191803778, 8.257333020416855, 788.3569155438075;
-                //                 322.8430082897389, 355.2204294695402, 753.834176313242, 788.1303407538394, 3.518941318206198]
-                //                Minima rows: 4
-                //                3.51894 at row,col: (3,4)=
-                //                5.75558 at row,col: (1,1)=
-                //                8.25733 at row,col: (2,3)=
-                //                31.6363 at row,col: (0,0)=
-                //                Minima cols: 5
-                //                31.6363 at row,col: (0,0)=
-                //                5.75558 at row,col: (1,1)=
-                //                39.0088 at row,col: (2,2)   --------------
-                //                8.25733 at row,col: (2,3)=
-                //                3.51894 at row,col: (3,4)=
-                //                Maxima: 4
-                //                788.357 at row,col: (2,4)
-                //                788.13 at row,col: (3,3)
-                //                563.347 at row,col: (0,3)
-                //                543.587 at row,col: (1,3)
-                //                Updated object: idx 3 #4 x 330.81 y 214.288
-                //                Updated object: idx 1 #1 x 646.71 y 369.032
-                //                Updated object: idx 2 #2 x 1100.31 y 59.1559
-                //                Updated object: idx 0 #0 x 633.966 y 314.625
-                //                Debug to_add: 1
-                //                Debug input object add: idx col 4 idx row 2 #5
-                //                New object: idx 4 #5 x 330.81 y 214.288 // changed to row after this debug
-                //                (OpenCV tracking) Total took: 2 ms
-                //                Point match: idx 3 #4
-                //                (OpenCV tracking) Reduced queue size: 0 size: array of 4
-                //                Current object centroids: 5
-                //                idx 0 #0 (633.966,314.625)
-                //                idx 1 #1 (646.71,369.032)
-                //                idx 2 #2 (1100.31,59.1559)
-                //                idx 3 #4 (330.81,214.288)
-                //                idx 4 #5 (330.81,214.288) -----------
-
-
-
-
-                // bug 1: assigning the same point several times, change something with the minima
-
-
-                //                Current object centroids: 4
-                //                idx 0 #0 (642.895,342.345)
-                //                idx 1 #1 (640.306,361.452)
-                //                idx 2 #2 (972.904,192.83)
-                //                idx 3 #3 (527.216,244.983)
-                //                Current input centroids: 3
-                //                idx 0 #-1 (629.097,349.966)
-                //                idx 1 #-1 (641.035,360.909)
-                //                idx 2 #-1 (526.734,255.955)
-                //                Distance matrix ( 4 x 3 ):
-                //                [15.76210300218083, 18.65773113366837, 144.7634625011049;
-                //                 16.04849575235883, 0.9092481883047626, 155.0102960404363;
-                //                 378.0143227356846, 372.0053011725211, 450.6133705993814;
-                //                 146.2916217362687, 162.4613085045341, 10.98237217747797]
-                //                Minima: 4
-                //                0.909248 at row,col: (1,1)
-                //                10.9824 at row,col: (3,2)
-                //                15.7621 at row,col: (0,0)
-                //                372.005 at row,col: (2,1)
-                //                Maxima: 4
-                //                450.613 at row,col: (2,2)
-                //                162.461 at row,col: (3,1)
-                //                155.01 at row,col: (1,2)
-                //                144.763 at row,col: (0,2)
-                //                Updated object: idx 1 #1 x 641.035 y 360.909
-                //                Updated object: idx 3 #3 x 526.734 y 255.955
-                //                Updated object: idx 0 #0 x 629.097 y 349.966
-                //                Updated object: idx 2 #2 x 641.035 y 360.909
-                //                Lost object: idx 2 #2 x 641.035 y 360.909
-                //                deleting object idx 2 #2
-                //                (OpenCV tracking) Total took: 1 ms
-                //                (OpenCV capture) Increased write index: 5 size0 [1280 x 720] type0 16 size1 [1280 x 720] type1 4
-                //                (OpenCV capture) Total took: 12 ms
-                //                (OpenCV segmentation) Increased read index: 5 size0 [1280 x 720] type0 16 size1 [1280 x 720] type1 4
-                //                (OpenCV segmentation) Increased queue size: 1 size: array of 4
-                //                (OpenCV segmentation) Total took: 10 ms
-                //                (OpenCV tracking) Reduced queue size: 0 size: array of 4
-                //                Current object centroids: 3
-                //                idx 0 #0 (629.097,349.966)+
-                //                idx 1 #1 (641.035,360.909)+
-                //                idx 2 #3 (526.734,255.955)+
-                //                Current input centroids: 4
-                //                idx 0 #-1 (643.973,343.209)
-                //                idx 1 #-1 (639.951,361.471)++
-                //                idx 2 #-1 (962.405,204.13)
-                //                idx 3 #-1 (515.926,259.406)+
-                //                Distance matrix ( 3 x 4 ):
-                //                [16.33834355871208, 15.8165526228977, 363.8161856882104, 144.9443938364356;
-                //                 17.94289681362182, 1.221347123331795, 357.57329077322, 161.1061430884407;
-                //                 146.144515404077, 154.7634622992736, 438.7427072104057, 11.3460058478314]
-                //                Minima: 3
-                //                1.22135 at row,col: (1,1)
-                //                11.346 at row,col: (2,3)
-                //                15.8166 at row,col: (0,1)
-                //                Maxima: 3
-                //                438.743 at row,col: (2,2)
-                //                363.816 at row,col: (0,2)
-                //                357.573 at row,col: (1,2)
-                //                Updated object: idx 1 #1 x 639.951 y 361.471
-                //                Updated object: idx 2 #3 x 515.926 y 259.406
-                //                Updated object: idx 0 #0 x 639.951 y 361.471
-                //                Debug to_add: 1
-                //                Debug input object add: idx col 2 idx row 2 #4
-                //                New object: idx 3 #4 x 962.405 y 204.13
-                //                (OpenCV tracking) Total took: 3 ms
-                //                (OpenCV capture) Increased write index: 6 size0 [1280 x 720] type0 16 size1 [1280 x 720] type1 4
-                //                (OpenCV capture) Total took: 16 ms
-                //                (OpenCV segmentation) Increased read index: 6 size0 [1280 x 720] type0 16 size1 [1280 x 720] type1 4
-                //                (OpenCV segmentation) Increased queue size: 1 size: array of 5
-                //                (OpenCV segmentation) Total took: 11 ms
-                //                (OpenCV capture) Increased write index: 7 size0 [1280 x 720] type0 16 size1 [1280 x 720] type1 4
-                //                (OpenCV capture) Total took: 15 ms
-                //                (OpenCV tracking) Reduced queue size: 0 size: array of 5
-                //                Current object centroids: 4
-                //                idx 0 #0 (639.951,361.471)
-                //                idx 1 #1 (639.951,361.471)
-                //                idx 2 #3 (515.926,259.406)
-                //                idx 3 #4 (962.405,204.13)
-
-
-
-
-
-
-
-
-
-
-
-
-
-                // bug 2: adding the wrong input index
-
-
-                //                Current object centroids: 4
-                //                idx 0 #0 (683.369,378.302)+
-                //                idx 1 #1 (596.699,341.753)+
-                //                idx 2 #2 (305.96,270.547)+
-                //                idx 3 #5 (1044.91,521.188)+
-                //                Current input centroids: 4
-                //                idx 0 #-1 (689.564,380.065)+
-                //                idx 1 #-1 (597.221,341.643)+
-                //                idx 2 #-1 (299.493,275.638)+
-                //                idx 3 #-1 (1046.57,522.775)+
-                //                Distance matrix ( 4 x 4 ):
-                //                [6.440979648931084, 93.62263293071025, 397.366759898874, 390.8837606246364;
-                //                 100.4573369694134, 0.5342091928115595, 304.4707157521901, 484.9289418761837;
-                //                 398.9313622654873, 299.8135159369417, 8.230292074281216, 782.385932411932;
-                //                 382.3448898413069, 482.3508936393918, 784.8203840105554, 2.298144033958473]
-                //                Minima: 4
-                //                0.534209 at row,col: (1,1)
-                //                2.29814 at row,col: (3,3)
-                //                6.44098 at row,col: (0,0)
-                //                8.23029 at row,col: (2,2)
-                //                Maxima: 4
-                //                784.82 at row,col: (3,2)
-                //                782.386 at row,col: (2,3)
-                //                484.929 at row,col: (1,3)
-                //                397.367 at row,col: (0,2)
-                //                Updated object: idx 1 #1 x 597.221 y 341.643
-                //                Updated object: idx 3 #5 x 1046.57 y 522.775
-                //                Updated object: idx 0 #0 x 689.564 y 380.065
-                //                Updated object: idx 2 #2 x 299.493 y 275.638
-                //                (OpenCV tracking) Total took: 1 ms
-                //                (OpenCV tracking) Reduced queue size: 0 size: array of 5
-
-                //                Current object centroids: 4
-                //                idx 0 #0 (689.564,380.065) +
-                //                idx 1 #1 (597.221,341.643) +
-                //                idx 2 #2 (299.493,275.638) +
-                //                idx 3 #5 (1046.57,522.775) +
-                //                Current input centroids: 5
-                //                idx 0 #-1 (693.074,372.85) +
-                //                idx 1 #-1 (596.486,342.16) +
-                //                idx 2 #-1 (752.388,185.913) --------------
-                //                idx 3 #-1 (300.599,277.261) +
-                //                idx 4 #-1 (1047.09,523.816) +
-                //                Distance matrix ( 4 x 5 ):
-                //                [8.023649847120954, 100.4998894864852, 204.063611153311, 402.3214457564323, 385.3408156432844;
-                //                 100.8044304801655, 0.8987935618389953, 219.8381232425886, 303.5296767492395, 485.3515736979858;
-                //                 405.4084523895476, 304.3517385048092, 461.6976826801945, 1.963576622034126, 787.7115368693632;
-                //                 383.9784432067437, 484.9746541605048, 447.2369625778045, 785.3379523750431, 1.161151367919249]
-                //                Minima: 4
-                //                0.898794 at row,col: (1,1)
-                //                1.16115 at row,col: (3,4)
-                //                1.96358 at row,col: (2,3)
-                //                8.02365 at row,col: (0,0)
-                //                Maxima: 4
-                //                787.712 at row,col: ( -> 2 <- ,4)
-                //                785.338 at row,col: (3,3)
-                //                485.352 at row,col: (1,4)
-                //                402.321 at row,col: (0,3)
-                //                Updated object: idx 1 #1 x 596.486 y 342.16
-                //                Updated object: idx 3 #5 x 1047.09 y 523.816
-                //                Updated object: idx 2 #2 x 300.599 y 277.261
-                //                Updated object: idx 0 #0 x 693.074 y 372.85
-                //                Debug to_add: 1
-                //                Debug input object add: idx 4 #7
-                //                New object: idx 4 #6 x 1047.09 y 523.816 --------------------- (752.388,185.913)
-                //                (OpenCV tracking) Total took: 1 ms
-                //                Point match: idx 3 #5 ------------------------------------------------
-                //                (OpenCV tracking) Reduced queue size: 0 size: array of 4
-
-                //                Current object centroids: 5
-                //                idx 0 #0 (693.074,372.85)
-                //                idx 1 #1 (596.486,342.16)+
-                //                idx 2 #2 (300.599,277.261)+
-                //                idx 3 #5 (1047.09,523.816)
-                //                idx 4 #6 (1047.09,523.816)
-                //                Current input centroids: 4
-                //                idx 0 #-1 (691.808,381.238)
-                //                idx 1 #-1 (596.932,341.273)+
-                //                idx 2 #-1 (302.586,279.061)+
-                //                idx 3 #-1 (1049.26,525.654)
-                //                Distance matrix ( 5 x 4 ):
-                //                [8.483095579151582, 101.1950153623298, 401.5931352878609, 387.5755965576175;
-                //                 103.0206901545194, 0.9923673592300829, 300.5971058419241, 488.5393973747424;
-                //                 404.7909033038528, 303.1680023494777, 2.681627301914399, 788.7884398581305;
-                //                 382.8214668711114, 485.759259738593, 783.7008445035273, 2.842863212023687;
-                //                 382.8214668711114, 485.759259738593, 783.7008445035273, 2.842863212023687]
-                //                Minima: 5
-                //                0.992367 at row,col: (1,1)
-                //                2.68163 at row,col: (2,2)
-                //                2.84286 at row,col: (3,3)
-                //                2.84286 at row,col: (4,3)
-                //                8.4831 at row,col: (0,0)
-                //                Maxima: 5
-                //                788.788 at row,col: (2,3)
-                //                783.701 at row,col: (4,2)
-                //                783.701 at row,col: (3,2)
-                //                488.539 at row,col: (1,3)
-                //                401.593 at row,col: (0,2)
-                //                Updated object: idx 1 #1 x 596.932 y 341.273
-                //                Updated object: idx 2 #2 x 302.586 y 279.061
-                //                Updated object: idx 3 #5 x 1049.26 y 525.654
-                //                Updated object: idx 4 #6 x 1049.26 y 525.654
-                //                Updated object: idx 0 #0 x 691.808 y 381.238
-                //                Lost object: idx 2 #2 x 302.586 y 279.061
-                //                deleting object idx 2 #2
-                //                (OpenCV tracking) Total took: 1 ms
-                //                (OpenCV tracking) Reduced queue size: 0 size: array of 5
-
-                //                Current object centroids: 4
-                //                idx 0 #0 (691.808,381.238)
-                //                idx 1 #1 (596.932,341.273)
-                //                idx 2 #5 (1049.26,525.654)
-                //                idx 3 #6 (1049.26,525.654)
-
-
+#if (VERBOSE >= 0)
+                // Error check if same point already exists
+                for (size_t i=0; i<tracked_objects_size; i++) {
+                    auto tmp_obj = m_tracked_objects->at(i);
+                    for (size_t j = 0; j < tracked_objects_size; j++) {
+                        if ( (i != j) && areSame(tmp_obj.cx, m_tracked_objects->at(j).cx)
+                             && areSame(tmp_obj.cy, m_tracked_objects->at(j).cy) )
+                            std::cerr << "ERROR Point match: obj idx "<< j << " #"
+                                      << m_tracked_objects->at(j).unique_id << " ("
+                                      << m_tracked_objects->at(j).cx << ","
+                                      << m_tracked_objects->at(j).cy << ") " << std::endl;
+                    }
+                }
+#endif
                 // Deregister lost objects
-                if ( !lost_objects.empty() ) {
+                if ( !lost_objects.empty() )
+                {
                     deregisterObjects(&lost_objects, m_tracked_objects);
-
+                    tracked_objects_size = m_tracked_objects->size();
                 }
 
-                tracked_objects_size = m_tracked_objects->size();
 
-#if (IMSHOW_TRA > 0)
+
+
+                //                Current object centroids: 5
+                //                idx 0 #0 (540.018,355.054)
+                //                idx 1 #1 (666.886,359.583)
+                //                idx 2 #2 (381.572,32.1588)
+                //                idx 3 #3 (135.066,441.903)
+                //                idx 4 #4 (110.48,377.865)
+
+                //                Current input centroids: 4
+                //                idx 0 #-1 (550.321,353.653)
+                //                idx 1 #-1 (665.875,359.479)
+                //                idx 2 #-1 (392.661,30.2895)
+                //                idx 3 #-1 (146.059,433.473)
+
+                //                Updated object: idx 1 #1 x 665.875 y 359.479 lost 0
+                //                Updated object: idx 0 #0 x 550.321 y 353.653 lost 0
+                //                Updated object: idx 2 #2 x 392.661 y 30.2895 lost 0
+                //                Updated object: idx 3 #3 x 146.059 y 433.473 lost 0
+                //                Updated object: idx 4 #4 x 146.059 y 433.473 lost 0
+
+                //                Lost object: idx 4 #4 lost 1
+
+                //                ERROR Point match: obj idx 4 #4 (146.059,433.473)
+                //                ERROR Point match: obj idx 3 #3 (146.059,433.473)
+
+                //                Current object centroids: 5
+                //                idx 0 #0 (550.321,353.653)
+                //                idx 1 #1 (665.875,359.479)
+                //                idx 2 #2 (392.661,30.2895)
+                //                idx 3 #3 (146.059,433.473)
+                //                idx 4 #4 (146.059,433.473)
+
+
+
+
+
+
+                //                Current object centroids: 7
+                //                idx 0 #0 (536.458,326.587) +
+                //                idx 1 #1 (664.18,367.749) +
+                //                idx 2 #2 (82.7494,106.134) +
+                //                idx 3 #3 (86.1865,202.376)
+                //                idx 4 #4 (9.32895,241.02)
+                //                idx 5 #5 (3.8,236.333)
+                //                idx 6 #6 (60.7541,274.965)
+                //                Current input centroids: 3
+                //                idx 0 #-1 (579.723,338.537) +
+                //                idx 1 #-1 (664.355,367.809) +
+                //                idx 2 #-1 (82.3868,173.369) +
+                //                Lost object: idx 5 #5 lost 1
+                //                Lost object: idx 4 #4 lost 1
+                //                Lost object: idx 2 #2 lost 1
+                //                Lost object: idx 1 #1 lost 1
+                //                Updated object: idx 1 #1 x 664.355 y 367.809 lost 1
+                //                Updated object: idx 3 #3 x 82.3868 y 173.369 lost 0
+                //                Updated object: idx 0 #0 x 579.723 y 338.537 lost 0
+                //                Updated object: idx 2 #2 x 82.3868 y 173.369 lost 1
+                //                Updated object: idx 4 #4 x 82.3868 y 173.369 lost 1
+                //                Updated object: idx 5 #5 x 82.3868 y 173.369 lost 1
+                //                Updated object: idx 6 #6 x 82.3868 y 173.369 lost 0
+                //                (OpenCV tracking) Total took: 1 ms
+                //                ERROR Point match: obj idx 3 #3 (82.3868,173.369)
+                //                ERROR Point match: obj idx 4 #4 (82.3868,173.369)
+                //                ERROR Point match: obj idx 5 #5 (82.3868,173.369)
+                //                ERROR Point match: obj idx 6 #6 (82.3868,173.369)
+                //                ERROR Point match: obj idx 2 #2 (82.3868,173.369)
+                //                ERROR Point match: obj idx 4 #4 (82.3868,173.369)
+                //                ERROR Point match: obj idx 5 #5 (82.3868,173.369)
+                //                ERROR Point match: obj idx 6 #6 (82.3868,173.369)
+                //                ERROR Point match: obj idx 2 #2 (82.3868,173.369)
+                //                ERROR Point match: obj idx 3 #3 (82.3868,173.369)
+                //                ERROR Point match: obj idx 5 #5 (82.3868,173.369)
+                //                ERROR Point match: obj idx 6 #6 (82.3868,173.369)
+                //                ERROR Point match: obj idx 2 #2 (82.3868,173.369)
+                //                ERROR Point match: obj idx 3 #3 (82.3868,173.369)
+                //                ERROR Point match: obj idx 4 #4 (82.3868,173.369)
+                //                ERROR Point match: obj idx 6 #6 (82.3868,173.369)
+                //                ERROR Point match: obj idx 2 #2 (82.3868,173.369)
+                //                ERROR Point match: obj idx 3 #3 (82.3868,173.369)
+                //                ERROR Point match: obj idx 4 #4 (82.3868,173.369)
+                //                ERROR Point match: obj idx 5 #5 (82.3868,173.369)
+                //                (OpenCV capture) After distance transformation: 19 ms
+                //                (OpenCV capture) After normalize thresh: 19 ms
+                //                (OpenCV capture) After find&draw contours: 21 ms
+                //                (OpenCV capture) Increased write index: 3 size0 [1280 x 720] type0 16 size1 [1280 x 720] type1 4
+                //                (OpenCV capture) Total took: 22 ms
+                //                (OpenCV segmentation) Increased read index: 3 size0 [1280 x 720] type0 16 size1 [1280 x 720] type1 4
+                //                Before watershed: 0 ms
+                //                After watershed: 2 ms
+                //                (OpenCV segmentation) Increased queue size: 1 size: array of 4
+                //                (OpenCV segmentation) Total took: 14 ms
+                //                (OpenCV tracking) Reduced queue size: 0 size: array of 4
+                //                Current object centroids: 7
+                //                idx 0 #0 (579.723,338.537)
+                //                idx 1 #1 (664.355,367.809)
+                //                idx 2 #2 (82.3868,173.369)
+                //                idx 3 #3 (82.3868,173.369)
+                //                idx 4 #4 (82.3868,173.369)
+                //                idx 5 #5 (82.3868,173.369)
+                //                idx 6 #6 (82.3868,173.369)
+
+
+
+                //                Current object centroids: 3
+                //                idx 0 #0 (620.743,360.408)+
+                //                idx 1 #1 (644.825,358.997)+
+                //                idx 2 #2 (560.888,367.001)+
+                //                Current input centroids: 3
+                //                idx 0 #-1 (634.649,357.521)
+                //                idx 1 #-1 (640.836,359.964)++
+                //                idx 2 #-1 (620.714,352.996)+
+                //                Minima rows: 3
+                //                4.10396 at row,col: (1,1)
+                //                7.41184 at row,col: (0,2)
+                //                61.4432 at row,col: (2,2)
+                //                Minima cols: 3
+                //                10.2826 at row,col: (1,0)
+                //                4.10396 at row,col: (1,1)
+                //                7.41184 at row,col: (0,2)
+                //                Maxima: 3
+                //                80.2575 at row,col: (2,1)
+                //                24.8464 at row,col: (1,2)
+                //                20.098 at row,col: (0,1)
+                //                Updated object: idx 1 #1 x 640.836 y 359.964 lost 0
+                //                Updated object: idx 0 #0 x 620.714 y 352.996 lost 0
+                //                Updated object: idx 2 #2 x 620.714 y 352.996 lost 0
+                //                (OpenCV tracking) Total took: 0 ms
+                //                ERROR Point match: obj idx 2 #2 (620.714,352.996)
+                //                ERROR Point match: obj idx 0 #0 (620.714,352.996)
+
+                //                Current object centroids: 3
+                //                idx 0 #0 (620.714,352.996)
+                //                idx 1 #1 (640.836,359.964)
+                //                idx 2 #2 (620.714,352.996)
+
+
+#if (IMSHOW > 0 && VERBOSE > 0)
                 cv::Mat tracking_mat = cv::Mat::zeros(FRAME_HEIGHT_CV, FRAME_WIDTH_CV, CV_8U);
-                // Draw markers on cv window
                 for (size_t i = 0; i < tracked_objects_size; i++){
                     if (i == 0)
                     {
@@ -746,6 +630,8 @@ private:
                                                              m_tracked_objects->at(i).w, m_tracked_objects->at(i).h), cv::Scalar(100), -1);
                         cv::circle(tracking_mat, cv::Point(roundToInt(m_tracked_objects->at(i).cx),
                                                            roundToInt(m_tracked_objects->at(i).cy)), 10, cv::Scalar(255), 2);
+                        cv::putText(tracking_mat, std::to_string(tracked_objects_size),
+                                    cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 1, 255, 3);
                     }
                     else
                     {
@@ -757,20 +643,40 @@ private:
                     //                   cv::putText(tracking_mat, std::to_string((int)(mm_per_pix * tmp_tr_obj[i].w))+" x "+std::to_string((int)(mm_per_pix * tmp_tr_obj[i].h)),
                     //                               cv::Point(tmp_tr_obj[i].x, tmp_tr_obj[i].y), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
                 }
-                cv::imshow("Tracking", tracking_mat);
-
+                m_mat_tra_mtx.lock();
+                m_current_mat_tra = tracking_mat;
+                m_mat_tra_mtx.unlock();
 #endif
+
+
 
 #if (VERBOSE > 0)
                 std::cout << "(OpenCV tracking) Total took: " << std::chrono::duration_cast<std::chrono::milliseconds>
                              (std::chrono::steady_clock::now()-m_start_time_tra).count() << " ms" << std::endl;
 #endif
-#if (IMSHOW_TRA > 0)
-#endif
             }
             else std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_TRAC));
         }
         std::cout << "Tracking thread is exiting" << std::endl;
+    }
+
+    void imshow_thread_func()
+    {
+        while( m_capture->isOpened() && cv::waitKey(1) != 27 )
+        {
+            m_mat_seg_mtx.lock();
+            cv::Mat seg = m_current_mat_seg;
+            m_mat_seg_mtx.unlock();
+            m_mat_tra_mtx.lock();
+            cv::Mat tra = m_current_mat_tra;
+            m_mat_tra_mtx.unlock();
+            if ( !seg.empty() && !tra.empty() )
+            {
+                cv::imshow("Segmentation", seg);
+                cv::imshow("Tracking" , tra);
+            }
+            else std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_SHOW));
+        }
     }
 
 
@@ -802,28 +708,6 @@ private:
         }
         return result;
     }
-
-
-    //    cv::Mat computeDistances(cv::Mat& from, cv::Mat& to)
-    //    {
-    //        // awaiting cv::Mats with n x 2 (x,y) dimension
-    //        cv::Mat result = cv::Mat::zeros(from.rows, to.rows, CV_64F);
-    //        for (int i = 0; i < from.rows; i++)
-    //        {
-    //            double x, y, x_t ,y_t;
-    //            x = from.at<double>(i, 0);
-    //            y = from.at<double>(i, 1);
-    //            for (int j = 0; j < to.rows; j++)
-    //            {
-    //                x_t = to.at<double>(j, 0);
-    //                y_t = to.at<double>(j, 1);
-    //                double dx = x_t - x;
-    //                double dy = y_t - y;
-    //                result.at<double>(i, j) = std::sqrt(dx * dx + dy * dy);
-    //            }
-    //        }
-    //        return result;
-    //    }
 
 public:
     OcvDevice(int idx, std::mutex* mutex, cv::Mat* buffer, size_t& write_idx_ref)

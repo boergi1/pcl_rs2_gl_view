@@ -221,6 +221,256 @@ private:
         {
             if ( !m_tracked_objects_buf->tobj_ptr_queue.empty() )
             {
+                // Read segmented input objects
+                size_t input_objects_size, tracked_objects_size;
+                m_tracked_objects_buf->mutex.lock();
+                input_objects_size = m_tracked_objects_buf->arr_size_queue.front();
+                m_tracked_objects_buf->arr_size_queue.pop();
+                m_input_objects = new tracked_object_t[input_objects_size]();
+                m_input_objects = m_tracked_objects_buf->tobj_ptr_queue.front();
+                m_tracked_objects_buf->tobj_ptr_queue.pop();
+                m_tracked_objects_buf->mutex.unlock();
+                tracked_objects_size = m_tracked_objects->size();
+#if (VERBOSE > 1)
+                std::cout << "Current object centroids: " << tracked_objects_size << std::endl;
+                for (size_t i = 0; i < tracked_objects_size; i++){
+                    std::cout << "idx "<< i <<" #" << m_tracked_objects->at(i).unique_id
+                              << " (" << m_tracked_objects->at(i).cx << ","
+                              << m_tracked_objects->at(i).cy << ")" << " lost: "
+                              << m_tracked_objects->at(i).lost_ctr << std::endl;
+                }
+                std::cout << "Current input centroids: " << input_objects_size << std::endl;
+                for (size_t i = 0; i < input_objects_size; i++) {
+                    std::cout << "idx "<< i <<" #" << m_input_objects[i].unique_id << " (" << m_input_objects[i].cx
+                              << "," << m_input_objects[i].cy << ")" << std::endl;
+                }
+#endif
+
+
+
+
+                // Track objects
+                std::vector<size_t> dereg_objs;
+                if (tracked_objects_size == 0 && input_objects_size == 0) // ||
+                {
+                    break;
+                }
+                else if (tracked_objects_size == 0 && input_objects_size > 0)
+                {
+                    // Register all input objects
+                    for (size_t i = 0; i < input_objects_size; i++)
+                    {
+                        auto tmp_obj = m_input_objects[i];
+                        tmp_obj.unique_id = m_id_ctr++;
+                        m_tracked_objects->push_back(tmp_obj);
+                    }
+                }
+                else if (tracked_objects_size > 0 && input_objects_size == 0)
+                {
+                    // Deregister all tracked objects
+                    for (size_t i = 0; i < tracked_objects_size; i++)
+                    {
+                        m_tracked_objects->at(i).lost_ctr++;
+                        if (m_tracked_objects->at(i).lost_ctr >= m_max_disappeared)
+                            dereg_objs.push_back(i);
+                    }
+                }
+                else {
+                    // Find minimum distances between points
+                    double min, max;
+                    int min_idx, max_idx;
+                    std::vector<std::tuple<double,int,int>> min_dist_obj_to_inp, min_dist_inp_to_obj;
+                    cv::Mat distances = centroidDistances(m_tracked_objects, m_input_objects, input_objects_size);
+
+                    for (int row = 0; row < static_cast<int>(tracked_objects_size); row++)
+                    {
+                        cv::minMaxIdx(distances.row(row), &min, &max, &min_idx, &max_idx);
+                        min_dist_obj_to_inp.push_back(std::make_tuple(min, row, min_idx));
+                    }
+                    for (int col = 0; col < static_cast<int>(input_objects_size); col++)
+                    {
+                        cv::minMaxIdx(distances.col(col), &min, &max, &min_idx, &max_idx);
+                        min_dist_inp_to_obj.push_back(std::make_tuple(min, min_idx, col));
+                    }
+
+                    std::sort( min_dist_obj_to_inp.begin(), min_dist_obj_to_inp.end() );
+                    std::sort( min_dist_inp_to_obj.begin(), min_dist_inp_to_obj.end() );
+
+                    // Update existing points
+                    std::vector<int> updated_objects;
+                    std::vector<int> updated_inputs;
+                    int ret;
+
+                    for (size_t i = 0; i < min_dist_obj_to_inp.size(); i++)
+                    {
+                        auto objidx =  std::get<1>(min_dist_obj_to_inp.at(i));
+                        auto inpidx = std::get<2>(min_dist_obj_to_inp.at(i));
+                        ret = 0;
+
+                        for (size_t j = 0; j < updated_inputs.size(); j++)
+                        {
+                            //                           std::get<0>(tmp) == objidx || std::get<1>(tmp) == inpidx;
+                            if (updated_inputs.at(j) == inpidx)
+                            {
+                                std::cout << "DEBUG input already used: " << inpidx << std::endl;
+                                ret = 1;
+                                // search input cols for obj idx
+                                for (size_t k = 0; k < min_dist_inp_to_obj.size(); k++) {
+                                    if (objidx == std::get<1>(min_dist_inp_to_obj.at(k)))
+                                    {
+                                        inpidx = std::get<2>(min_dist_inp_to_obj.at(k));
+                                        std::cout << "DEBUG took alternative inp idx: " << inpidx << std::endl;
+                                        ret = 2;
+                                        break;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+
+                        switch (ret)
+                        {
+                        case 0: std::cout << "DEBUG normal update" << std::endl;
+                            break; case 1: std::cout << "DEBUG no partner found" << std::endl;
+                            break; case 2: std::cout << "DEBUG alternative partner found" << std::endl;
+                            break; default: break;
+                        }
+
+                        switch (ret)
+                        {
+                        case 1:
+                            m_tracked_objects->at(static_cast<size_t>(objidx)).lost_ctr++;
+                            break;
+                        default:
+                            std::cout << "DEBUG updating object " << objidx << " with input "
+                                      << inpidx << std::endl;
+                            auto tmp_new_obj = m_input_objects[inpidx];
+                            auto tmp_old_obj = m_tracked_objects->at(static_cast<size_t>(objidx));
+                            tmp_new_obj.unique_id = tmp_old_obj.unique_id;
+                            tmp_new_obj.lost_ctr = 0;
+                            m_tracked_objects->at(static_cast<size_t>(objidx)) = tmp_new_obj;
+                            updated_inputs.push_back(inpidx);
+                            updated_objects.push_back(objidx);
+                            break;
+                        }
+
+                    }
+
+                    std::cout << "DEBUG updating finished" << std::endl;
+                    std::cout << "DEBUG updated objects:" << std::endl;
+                    for (size_t i = 0; i < updated_objects.size(); i++) {
+                        std::cout << updated_objects.at(i) << std::endl;
+                    }
+                    std::cout << "DEBUG updated inputs:" << std::endl;
+                    for (size_t i = 0; i < updated_inputs.size(); i++) {
+                        std::cout << updated_inputs.at(i) << std::endl;
+                    }
+
+                    // Register new objects
+                    if (updated_inputs.size() < input_objects_size)
+                    {
+                        for (int i = 0; i < static_cast<int>( input_objects_size ); i++) {
+                            bool inp_updated = false;
+                            for (size_t j = 0; updated_inputs.size(); j++) {
+                                if ( i == updated_inputs.at(j) )
+                                {
+                                    inp_updated = true;
+                                    break;
+                                }
+                            }
+                            if (!inp_updated)
+                            {
+                                auto tmp_obj = m_input_objects[i];
+                                tmp_obj.unique_id = m_id_ctr++;
+                                tmp_obj.lost_ctr = 0;
+                                m_tracked_objects->push_back(tmp_obj);
+#if (VERBOSE > 1)
+                                std::cout << "New object: idx " << m_tracked_objects->size()-1 << " #" << m_tracked_objects->back().unique_id
+                                          << " x " << m_tracked_objects->back().cx
+                                          << " y " << m_tracked_objects->back().cy << std::endl;
+#endif
+                            }
+                        }
+
+                    }
+
+                    // Deregister lost objects
+                    std::vector<size_t> lost_objects;
+                    for (size_t i=0; i<tracked_objects_size; i++) {
+                        auto tmp_obj = m_tracked_objects->at(i);
+                        if (tmp_obj.lost_ctr >= m_max_disappeared)
+                            lost_objects.push_back(i);
+#if (VERBOSE >= 0)
+                        // Error check if same point already exists
+                        for (size_t j = 0; j < tracked_objects_size; j++) {
+                            if ( (i != j) && areSame(tmp_obj.cx, m_tracked_objects->at(j).cx)
+                                 && areSame(tmp_obj.cy, m_tracked_objects->at(j).cy) )
+                                std::cerr << "ERROR Point match: obj idx "<< j << " #"
+                                          << m_tracked_objects->at(j).unique_id << " ("
+                                          << m_tracked_objects->at(j).cx << ","
+                                          << m_tracked_objects->at(j).cy << ") " << std::endl;
+                        }
+#endif
+                    }
+                    if ( !lost_objects.empty() )
+                    {
+                        deregisterObjects(&lost_objects, m_tracked_objects);
+                        tracked_objects_size = m_tracked_objects->size();
+                    }
+
+#if (IMSHOW > 0 && VERBOSE > 0)
+                    // Draw cv window
+                    cv::Mat tracking_mat = cv::Mat::zeros(FRAME_HEIGHT_CV, FRAME_WIDTH_CV, CV_8U);
+                    for (size_t i = 0; i < tracked_objects_size; i++){
+                        if (i == 0)
+                        {
+                            cv::rectangle(tracking_mat, cv::Rect(m_tracked_objects->at(i).x, m_tracked_objects->at(i).y,
+                                                                 m_tracked_objects->at(i).w, m_tracked_objects->at(i).h), cv::Scalar(100), -1);
+                            cv::circle(tracking_mat, cv::Point(roundToInt(m_tracked_objects->at(i).cx),
+                                                               roundToInt(m_tracked_objects->at(i).cy)), 10, cv::Scalar(255), 2);
+                            cv::putText(tracking_mat, std::to_string(tracked_objects_size),
+                                        cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 1, 255, 3);
+                        }
+                        else
+                        {
+                            cv::circle(tracking_mat, cv::Point(roundToInt(m_tracked_objects->at(i).cx),
+                                                               roundToInt(m_tracked_objects->at(i).cy)), 5, cv::Scalar(255), -1);
+                            cv::rectangle(tracking_mat, cv::Rect(m_tracked_objects->at(i).x, m_tracked_objects->at(i).y,
+                                                                 m_tracked_objects->at(i).w, m_tracked_objects->at(i).h), cv::Scalar(255), 1);
+                        }
+                        //                   cv::putText(tracking_mat, std::to_string((int)(mm_per_pix * tmp_tr_obj[i].w))+" x "+std::to_string((int)(mm_per_pix * tmp_tr_obj[i].h)),
+                        //                               cv::Point(tmp_tr_obj[i].x, tmp_tr_obj[i].y), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
+                    }
+                    m_mat_tra_mtx.lock();
+                    m_current_mat_tra = tracking_mat;
+                    m_mat_tra_mtx.unlock();
+#endif
+#if (VERBOSE > 0)
+                    std::cout << "(OpenCV tracking) Total took: " << std::chrono::duration_cast<std::chrono::milliseconds>
+                                 (std::chrono::steady_clock::now()-m_start_time_tra).count() << " ms" << std::endl;
+#endif
+                }
+            }
+            else std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_TRAC));
+        }
+        std::cout << "Tracking thread is exiting" << std::endl;
+    }
+
+
+
+
+    void tracking_thread_graveyard()
+    {
+        std::cout << "OpenCV GRAVE tracking thread started # " << std::this_thread::get_id() << std::endl;
+        m_tracked_objects = new std::vector<tracked_object_t>();
+#if (IMSHOW_TRA > 0)
+        while( m_capture->isOpened() && cv::waitKey(1) != 27 )
+#else
+        while( m_capture->isOpened() )
+#endif
+        {
+            if ( !m_tracked_objects_buf->tobj_ptr_queue.empty() )
+            {
                 size_t input_objects_size, tracked_objects_size;
                 cv::Mat distances;
                 std::vector<size_t> lost_objects;
@@ -288,9 +538,10 @@ private:
                             row_min_distances, col_min_distances, max_distances; // value, row, col
                     // Compute centroid distances
                     distances = centroidDistances(m_tracked_objects, m_input_objects, input_objects_size);
-#if (VERBOSE > 2)
+#if (VERBOSE > 1)
                     std::cout << "Distance matrix ( " << tracked_objects_size << " x " << input_objects_size << " ):"<< std::endl << distances << std::endl;
 #endif
+
                     // Find min/max distances of known objects (rows)
                     for (int i = 0; i < static_cast<int>(tracked_objects_size); i++)
                     {
@@ -315,17 +566,18 @@ private:
 
 
 
-#ifdef remove_duplicate_vals
-                    std::sort( total_min_distances.begin(), total_min_distances.end() );
-                    total_min_distances.erase( std::unique( total_min_distances.begin(), total_min_distances.end()), total_min_distances.end() );
-#else
+                    //#ifdef remove_duplicate_vals
+                    //                    std::sort( total_min_distances.begin(), total_min_distances.end() );
+                    //                    total_min_distances.erase( std::unique( total_min_distances.begin(), total_min_distances.end()), total_min_distances.end() );
+                    //#else
                     std::sort( total_min_distances.begin(), total_min_distances.end() );
                     // remove duplicate row/col pairs
                     total_min_distances.erase( std::unique (total_min_distances.begin(), total_min_distances.end(),
                                                             [](const std::tuple<double,int,int> &l, const std::tuple<double,int,int> &r) {
                         return (std::get<1>(l) == std::get<1>(r)) && (std::get<2>(l) == std::get<2>(r));
                     }), total_min_distances.end() );
-#endif
+                    //#endif
+
                     //#else
                     //                    // sort by cols
                     //                    std::sort( total_min_distances.begin(), total_min_distances.end(), [](const std::tuple<double,int,int> &a, const std::tuple<double,int,int> &b) {
@@ -368,13 +620,111 @@ private:
                         std::cout << std::get<0>(total_min_distances.at(i)) << " at row,col: (" << std::get<1>(total_min_distances.at(i)) << ","
                                   << std::get<2>(total_min_distances.at(i)) << ")" << std::endl;
                     }
-
 #endif
+
+
+
+
+
+
+
+
+
+
+                    // Update objects
+                    std::vector<size_t> used_objects;
+                    std::vector<size_t> used_inputs;
+                    for (size_t i = 0; i < total_min_distances.size(); i++)
+                    {
+                        size_t obj_idx = static_cast<size_t>(std::get<1>(total_min_distances[i]))/*row*/;
+                        size_t inp_idx = static_cast<size_t>(std::get<2>(total_min_distances[i]))/*col*/;
+                        auto tmp_new_obj = m_input_objects[inp_idx];
+                        auto tmp_old_obj = m_tracked_objects->at(obj_idx);
+                        std::cout << "DEBUG comparing object idx " << obj_idx
+                                  << " with inp idx " << inp_idx << std::endl;
+                        //                        if (tmp_old_obj.lost_ctr == 0)
+                        //                        {
+                        bool input_used = false;
+                        bool object_used = false;
+                        for (size_t inidx=0; inidx < used_inputs.size(); inidx++) {
+                            std::cout << "DEBUG used inputs print: " << used_inputs.at(inidx) << std::endl;
+                            if (inp_idx == used_inputs.at(inidx))
+                            {
+                                input_used = true;
+                                std::cout << "DEBUG input index already used: " << inp_idx << std::endl;
+                            }
+                        }
+                        for (size_t oidx=0; oidx < used_objects.size(); oidx++) {
+                            std::cout << "DEBUG used objects print: " << used_objects.at(oidx) << std::endl;
+                            if (obj_idx == used_objects.at(oidx))
+                            {
+                                object_used = true;
+                                std::cout << "DEBUG object index already used: " << obj_idx << std::endl;
+                            }
+                        }
+
+                        if (!input_used && !object_used)
+                        {
+                            std::cout << "DEBUG UPDATE: obj idx " << obj_idx
+                                      << " with inp idx " << inp_idx << std::endl;
+                            tmp_new_obj.unique_id = tmp_old_obj.unique_id;
+                            m_tracked_objects->at(obj_idx) = tmp_new_obj;
+                            used_inputs.push_back(inp_idx);
+                            used_objects.push_back(obj_idx);
+#if (VERBOSE > 1)
+                            std::cout << "Updated object: idx " << obj_idx << " with idx " << inp_idx << " #"
+                                      << tmp_new_obj.unique_id << " x " << tmp_new_obj.cx
+                                      << " y " << tmp_new_obj.cy << " lost "
+                                      << tmp_new_obj.lost_ctr << std::endl;
+
+                            if (used_objects.size() == tracked_objects_size ||
+                                    used_inputs.size() == input_objects_size)
+                            {
+                                std::cout << "DEBUG everthing updated" << std::endl;
+                                break;
+                            }
+#endif
+                        }
+                        //                        }
+                        else {
+                            std::cout << "DEBUG skipping object idx " << obj_idx << std::endl;
+                            if (used_objects.size() == tracked_objects_size ||
+                                    used_inputs.size() == input_objects_size)
+                            {
+                                std::cerr << "ERROR while updating centroids" << std::endl;
+                            }
+                        }
+                    }
+
+
+
+
+
+
+
+
+
+
 
                     if (tracked_objects_size > input_objects_size)
                     {
 
                         // Deregister specific objects
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                         size_t to_delete = tracked_objects_size - input_objects_size;
                         for (size_t i = 0; i < to_delete; i++)
                         {
@@ -400,6 +750,23 @@ private:
                     else if (tracked_objects_size < input_objects_size)
                     {
                         // Register specific objects
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                         for (size_t i=0; i<col_min_distances.size(); i++) {
                             bool new_object = true;
                             for (size_t j=0; j<row_min_distances.size(); j++) {
@@ -422,226 +789,12 @@ private:
                         }
                     }
 
-                    // 4 -> 3
-
-                    //                    Current object centroids: 4
-                    //                    idx 0 #0 (642.451,320.941) lost: 0
-                    //                    idx 1 #1 (68.9961,13.8653) lost: 0
-                    //                    idx 2 #2 (635.367,369.329) lost: 0
-                    //                    idx 3 #3 (841.831,81.2215) lost: 0
-                    //                    Current input centroids: 3
-                    //                    idx 0 #-1 (662.025,332.663)
-                    //                    idx 1 #-1 (633.106,367.797)
-                    //                    idx 2 #-1 (857.05,76.7848)
-                    //                    Minima rows: 4
-                    //                    2.73051 at row,col: (2,1)
-                    //                    15.8524 at row,col: (3,2)
-                    //                    22.8149 at row,col: (0,0)
-                    //                    665.949 at row,col: (1,1)
-                    //                    Minima cols: 3
-                    //                    2.73051 at row,col: (2,1)
-                    //                    15.8524 at row,col: (3,2)
-                    //                    22.8149 at row,col: (0,0)
-                    //                    Maxima: 4
-                    //                    790.561 at row,col: (1,2)
-                    //                    367.049 at row,col: (2,2)
-                    //                    354.529 at row,col: (3,1)
-                    //                    325.061 at row,col: (0,2)
-                    //                    Minima total: 4
-                    //                    2.73051 at row,col: (2,1)
-                    //                    15.8524 at row,col: (3,2)
-                    //                    22.8149 at row,col: (0,0)
-                    //                    665.949 at row,col: (1,1)
-
-                    //                    Lost object: idx 1 #1 lost 1
-
-                    //                    DEBUG comparing object idx 2 with inp idx 1
-                    //                    DEBUG UPDATE: obj idx 2 with inp idx 1
-
-                    //                    Updated object: idx 2 with idx 1 #2 x 633.106 y 367.797 lost 0
-                    //                    DEBUG comparing object idx 3 with inp idx 2
-                    //                    DEBUG used inputs print: 1
-                    //                    DEBUG used objects print: 2
-                    //                    DEBUG UPDATE: obj idx 3 with inp idx 2
-                    //                    Updated object: idx 3 with idx 2 #3 x 857.05 y 76.7848 lost 0
-
-                    //                    DEBUG comparing object idx 0 with inp idx 0
-                    //                    DEBUG used inputs print: 1
-                    //                    DEBUG used inputs print: 2
-                    //                    DEBUG used objects print: 2
-                    //                    DEBUG used objects print: 3
-                    //                    DEBUG UPDATE: obj idx 0 with inp idx 0
-                    //                    Updated object: idx 0 with idx 0 #0 x 662.025 y 332.663 lost 0
-
-                    //                    DEBUG comparing object idx 1 with inp idx 1
-                    //                    DEBUG used inputs print: 1
-                    //                    DEBUG input index already used: 1
-                    //                    DEBUG used inputs print: 2
-                    //                    DEBUG used inputs print: 0
-                    //                    DEBUG used objects print: 2
-                    //                    DEBUG used objects print: 3
-                    //                    DEBUG used objects print: 0
-                    //                    DEBUG skipping object idx 1
-
-                    //                    DEBUG HELP
-
-                    //                    Current object centroids: 4
-                    //                    idx 0 #0 (662.025,332.663) lost: 0
-                    //                    idx 1 #1 (68.9961,13.8653) lost: 1
-                    //                    idx 2 #2 (633.106,367.797) lost: 0
-                    //                    idx 3 #3 (857.05,76.7848) lost: 0
 
 
 
 
 
 
-                    //    4 -> 5
-
-                    //                    Current object centroids: 4
-                    //                    idx 0 #0 (592.983,315.516) lost: 0
-                    //                    idx 1 #1 (264.934,171.308) lost: 0
-                    //                    idx 2 #2 (682.915,388.733) lost: 0
-                    //                    idx 3 #3 (1086.77,374.087) lost: 0
-                    //                    Current input centroids: 5
-                    //                    idx 0 #-1 (630.769,343.957)
-                    //                    idx 1 #-1 (671.185,388.052)
-                    //                    idx 2 #-1 (309.307,149.507)
-                    //                    idx 3 #-1 (1124.68,355.692)
-                    //                    idx 4 #-1 (805.211,671.837)
-                    //                    Minima rows: 4
-                    //                    11.7499 at row,col: (2,1)
-                    //                    42.1357 at row,col: (3,3)
-                    //                    47.2935 at row,col: (0,0)
-                    //                    49.4389 at row,col: (1,2)
-                    //                    Minima cols: 5
-                    //                    11.7499 at row,col: (2,1)
-                    //                    42.1357 at row,col: (3,3)
-                    //                    47.2935 at row,col: (0,0)
-                    //                    49.4389 at row,col: (1,2)
-                    //                    308.39 at row,col: (2,4)
-                    //                    Maxima: 4
-                    //                    879.293 at row,col: (1,3)
-                    //                    809.249 at row,col: (3,2)
-                    //                    533.211 at row,col: (0,3)
-                    //                    443.635 at row,col: (2,2)
-                    //                    Minima total: 5
-                    //                    11.7499 at row,col: (2,1)
-                    //                    42.1357 at row,col: (3,3)
-                    //                    47.2935 at row,col: (0,0)
-                    //                    49.4389 at row,col: (1,2)
-                    //                    308.39 at row,col: (2,4)
-
-                    //                    New object: idx 4 #4 x 805.211 y 671.837
-
-                    //                    DEBUG comparing object idx 2 with inp idx 1
-                    //                    DEBUG UPDATE: obj idx 2 with inp idx 1
-                    //                    Updated object: idx 2 with idx 1 #2 x 671.185 y 388.052 lost 0
-
-                    //                    DEBUG comparing object idx 3 with inp idx 3
-                    //                    DEBUG used inputs print: 1
-                    //                    DEBUG used objects print: 2
-                    //                    DEBUG UPDATE: obj idx 3 with inp idx 3
-                    //                    Updated object: idx 3 with idx 3 #3 x 1124.68 y 355.692 lost 0
-
-                    //                    DEBUG comparing object idx 0 with inp idx 0
-                    //                    DEBUG used inputs print: 1
-                    //                    DEBUG used inputs print: 3
-                    //                    DEBUG used objects print: 2
-                    //                    DEBUG used objects print: 3
-                    //                    DEBUG UPDATE: obj idx 0 with inp idx 0
-                    //                    Updated object: idx 0 with idx 0 #0 x 630.769 y 343.957 lost 0
-
-                    //                    DEBUG comparing object idx 1 with inp idx 2
-                    //                    DEBUG used inputs print: 1
-                    //                    DEBUG used inputs print: 3
-                    //                    DEBUG used inputs print: 0
-                    //                    DEBUG used objects print: 2
-                    //                    DEBUG used objects print: 3
-                    //                    DEBUG used objects print: 0
-                    //                    DEBUG UPDATE: obj idx 1 with inp idx 2
-                    //                    Updated object: idx 1 with idx 2 #1 x 309.307 y 149.507 lost 0
-
-                    //                    DEBUG comparing object idx 2 with inp idx 4
-                    //                    DEBUG used inputs print: 1
-                    //                    DEBUG used inputs print: 3
-                    //                    DEBUG used inputs print: 0
-                    //                    DEBUG used inputs print: 2
-                    //                    DEBUG used objects print: 2
-                    //                    DEBUG object index already used: 2
-                    //                    DEBUG used objects print: 3
-                    //                    DEBUG used objects print: 0
-                    //                    DEBUG used objects print: 1
-                    //                    DEBUG skipping object idx 2
-
-                    //                    DEBUG HELP
-
-                    //                    Current object centroids: 5
-                    //                    idx 0 #0 (630.769,343.957) lost: 0
-                    //                    idx 1 #1 (309.307,149.507) lost: 0
-                    //                    idx 2 #2 (671.185,388.052) lost: 0
-                    //                    idx 3 #3 (1124.68,355.692) lost: 0
-                    //                    idx 4 #4 (805.211,671.837) lost: 0
-
-
-
-                    // Update objects
-                    std::vector<size_t> used_objects;
-                    std::vector<size_t> used_inputs;
-                    for (size_t i = 0; i < total_min_distances.size(); i++)
-                    {
-                        size_t obj_idx = static_cast<size_t>(std::get<1>(total_min_distances[i]))/*row*/;
-                        size_t inp_idx = static_cast<size_t>(std::get<2>(total_min_distances[i]))/*col*/;
-                        auto tmp_new_obj = m_input_objects[inp_idx];
-                        auto tmp_old_obj = m_tracked_objects->at(obj_idx);
-                        std::cout << "DEBUG comparing object idx " << obj_idx
-                                  << " with inp idx " << inp_idx << std::endl;
-                        //                        if (tmp_old_obj.lost_ctr == 0)
-                        //                        {
-                        bool inputs_used = false;
-                        bool objects_used = false;
-                        for (size_t inidx=0; inidx < used_inputs.size(); inidx++) {
-                            std::cout << "DEBUG used inputs print: " << used_inputs.at(inidx) << std::endl;
-                            if (inp_idx == used_inputs.at(inidx))
-                            {
-                                inputs_used = true;
-                                std::cout << "DEBUG input index already used: " << inp_idx << std::endl;
-                            }
-                        }
-                        for (size_t oidx=0; oidx < used_objects.size(); oidx++) {
-                            std::cout << "DEBUG used objects print: " << used_objects.at(oidx) << std::endl;
-                            if (obj_idx == used_objects.at(oidx))
-                            {
-                                objects_used = true;
-                                std::cout << "DEBUG object index already used: " << obj_idx << std::endl;
-                            }
-                        }
-
-                        if (!inputs_used && !objects_used)
-                        {
-                            std::cout << "DEBUG UPDATE: obj idx " << obj_idx
-                                      << " with inp idx " << inp_idx << std::endl;
-                            tmp_new_obj.unique_id = tmp_old_obj.unique_id;
-                            m_tracked_objects->at(obj_idx) = tmp_new_obj;
-                            used_inputs.push_back(inp_idx);
-                            used_objects.push_back(obj_idx);
-#if (VERBOSE > 1)
-                            std::cout << "Updated object: idx " << obj_idx << " with idx " << inp_idx << " #"
-                                      << tmp_new_obj.unique_id << " x " << tmp_new_obj.cx
-                                      << " y " << tmp_new_obj.cy << " lost "
-                                      << tmp_new_obj.lost_ctr << std::endl;
-#endif
-                        }
-                        //                        }
-                        else {
-                            std::cout << "DEBUG skipping object idx " << obj_idx << std::endl;
-                            if (used_objects.size() == tracked_objects_size ||
-                                    used_inputs.size() == input_objects_size)
-                            {
-                                std::cout << "DEBUG HELP " << std::endl;
-                            }
-                        }
-                    }
 
 
 

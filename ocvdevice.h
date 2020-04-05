@@ -233,7 +233,7 @@ private:
                 tracked_objects_size = m_tracked_objects->size();
 #if (VERBOSE > 1)
                 std::cout << "Current object centroids: " << tracked_objects_size << std::endl;
-                for (size_t i = 0; i < tracked_objects_size; i++){
+                for (size_t i = 0; i < tracked_objects_size; i++) {
                     std::cout << "idx "<< i <<" #" << m_tracked_objects->at(i).unique_id
                               << " (" << m_tracked_objects->at(i).cx << ","
                               << m_tracked_objects->at(i).cy << ")" << " lost: "
@@ -245,9 +245,6 @@ private:
                               << "," << m_input_objects[i].cy << ")" << std::endl;
                 }
 #endif
-
-
-
 
                 // Track objects
                 std::vector<size_t> dereg_objs;
@@ -281,10 +278,12 @@ private:
                     int min_idx, max_idx;
                     std::vector<std::tuple<double,int,int>> min_dist_obj_to_inp, min_dist_inp_to_obj;
                     cv::Mat distances = centroidDistances(m_tracked_objects, m_input_objects, input_objects_size);
-
+#if (VERBOSE > 2)
+                    std::cout << "Distance matrix ( " << tracked_objects_size << " x " << input_objects_size << " ):"<< std::endl << distances << std::endl;
+#endif
                     for (int row = 0; row < static_cast<int>(tracked_objects_size); row++)
                     {
-                        cv::minMaxIdx(distances.row(row), &min, &max, &min_idx, &max_idx);
+                        cv::minMaxIdx(distances.row(row).t(), &min, &max, &min_idx, &max_idx);
                         min_dist_obj_to_inp.push_back(std::make_tuple(min, row, min_idx));
                     }
                     for (int col = 0; col < static_cast<int>(input_objects_size); col++)
@@ -292,35 +291,44 @@ private:
                         cv::minMaxIdx(distances.col(col), &min, &max, &min_idx, &max_idx);
                         min_dist_inp_to_obj.push_back(std::make_tuple(min, min_idx, col));
                     }
-
                     std::sort( min_dist_obj_to_inp.begin(), min_dist_obj_to_inp.end() );
                     std::sort( min_dist_inp_to_obj.begin(), min_dist_inp_to_obj.end() );
+
+#if (VERBOSE > 1)
+                    std::cout<<"Minima object -> input: "<< min_dist_obj_to_inp.size() <<std::endl;
+                    for (size_t i=0;i<min_dist_obj_to_inp.size();i++) {
+                        std::cout << std::get<0>(min_dist_obj_to_inp.at(i)) << " at row,col: ("
+                                  << std::get<1>(min_dist_obj_to_inp.at(i)) << ","
+                                  << std::get<2>(min_dist_obj_to_inp.at(i)) << ")" << std::endl;
+                    }
+                    std::cout<<"Minima input -> object: "<< min_dist_inp_to_obj.size() <<std::endl;
+                    for (size_t i=0;i<min_dist_inp_to_obj.size();i++) {
+                        std::cout << std::get<0>(min_dist_inp_to_obj.at(i)) << " at row,col: ("
+                                  << std::get<1>(min_dist_inp_to_obj.at(i)) << ","
+                                  << std::get<2>(min_dist_inp_to_obj.at(i)) << ")" << std::endl;
+                    }
+#endif
 
                     // Update existing points
                     std::vector<int> updated_objects;
                     std::vector<int> updated_inputs;
                     int ret;
-
                     for (size_t i = 0; i < min_dist_obj_to_inp.size(); i++)
                     {
                         auto objidx =  std::get<1>(min_dist_obj_to_inp.at(i));
                         auto inpidx = std::get<2>(min_dist_obj_to_inp.at(i));
                         ret = 0;
-
                         for (size_t j = 0; j < updated_inputs.size(); j++)
                         {
-                            //                           std::get<0>(tmp) == objidx || std::get<1>(tmp) == inpidx;
                             if (updated_inputs.at(j) == inpidx)
                             {
-                                std::cout << "DEBUG input already used: " << inpidx << std::endl;
-                                ret = 1;
+                                ret = -1;
                                 // search input cols for obj idx
                                 for (size_t k = 0; k < min_dist_inp_to_obj.size(); k++) {
                                     if (objidx == std::get<1>(min_dist_inp_to_obj.at(k)))
                                     {
                                         inpidx = std::get<2>(min_dist_inp_to_obj.at(k));
-                                        std::cout << "DEBUG took alternative inp idx: " << inpidx << std::endl;
-                                        ret = 2;
+                                        ret = 0;
                                         break;
                                     }
                                 }
@@ -328,22 +336,14 @@ private:
                             }
                         }
 
-                        switch (ret)
+                        switch (ret) {
+                        case -1:
                         {
-                        case 0: std::cout << "DEBUG normal update" << std::endl;
-                            break; case 1: std::cout << "DEBUG no partner found" << std::endl;
-                            break; case 2: std::cout << "DEBUG alternative partner found" << std::endl;
-                            break; default: break;
-                        }
-
-                        switch (ret)
-                        {
-                        case 1:
                             m_tracked_objects->at(static_cast<size_t>(objidx)).lost_ctr++;
                             break;
-                        default:
-                            std::cout << "DEBUG updating object " << objidx << " with input "
-                                      << inpidx << std::endl;
+                        }
+                        case 0:
+                        {
                             auto tmp_new_obj = m_input_objects[inpidx];
                             auto tmp_old_obj = m_tracked_objects->at(static_cast<size_t>(objidx));
                             tmp_new_obj.unique_id = tmp_old_obj.unique_id;
@@ -351,27 +351,26 @@ private:
                             m_tracked_objects->at(static_cast<size_t>(objidx)) = tmp_new_obj;
                             updated_inputs.push_back(inpidx);
                             updated_objects.push_back(objidx);
+#if (VERBOSE > 1)
+                            std::cout << "Updated object: idx " << objidx << " with idx " << inpidx << " #"
+                                      << tmp_new_obj.unique_id << " x " << tmp_new_obj.cx
+                                      << " y " << tmp_new_obj.cy << " lost "
+                                      << tmp_new_obj.lost_ctr << std::endl;
+#endif
                             break;
                         }
-
-                    }
-
-                    std::cout << "DEBUG updating finished" << std::endl;
-                    std::cout << "DEBUG updated objects:" << std::endl;
-                    for (size_t i = 0; i < updated_objects.size(); i++) {
-                        std::cout << updated_objects.at(i) << std::endl;
-                    }
-                    std::cout << "DEBUG updated inputs:" << std::endl;
-                    for (size_t i = 0; i < updated_inputs.size(); i++) {
-                        std::cout << updated_inputs.at(i) << std::endl;
+                        default: break;
+                        }
                     }
 
                     // Register new objects
                     if (updated_inputs.size() < input_objects_size)
                     {
-                        for (int i = 0; i < static_cast<int>( input_objects_size ); i++) {
+                        for (int i = 0; i < static_cast<int>( input_objects_size ); i++)
+                        {
                             bool inp_updated = false;
-                            for (size_t j = 0; updated_inputs.size(); j++) {
+                            for (size_t j = 0; j < updated_inputs.size(); j++)
+                            {
                                 if ( i == updated_inputs.at(j) )
                                 {
                                     inp_updated = true;
@@ -391,18 +390,19 @@ private:
 #endif
                             }
                         }
-
                     }
 
                     // Deregister lost objects
                     std::vector<size_t> lost_objects;
-                    for (size_t i=0; i<tracked_objects_size; i++) {
+                    for (size_t i=0; i<tracked_objects_size; i++)
+                    {
                         auto tmp_obj = m_tracked_objects->at(i);
                         if (tmp_obj.lost_ctr >= m_max_disappeared)
                             lost_objects.push_back(i);
 #if (VERBOSE >= 0)
                         // Error check if same point already exists
-                        for (size_t j = 0; j < tracked_objects_size; j++) {
+                        for (size_t j = 0; j < tracked_objects_size; j++)
+                        {
                             if ( (i != j) && areSame(tmp_obj.cx, m_tracked_objects->at(j).cx)
                                  && areSame(tmp_obj.cy, m_tracked_objects->at(j).cy) )
                                 std::cerr << "ERROR Point match: obj idx "<< j << " #"
@@ -417,29 +417,21 @@ private:
                         deregisterObjects(&lost_objects, m_tracked_objects);
                         tracked_objects_size = m_tracked_objects->size();
                     }
-
 #if (IMSHOW > 0 && VERBOSE > 0)
                     // Draw cv window
                     cv::Mat tracking_mat = cv::Mat::zeros(FRAME_HEIGHT_CV, FRAME_WIDTH_CV, CV_8U);
-                    for (size_t i = 0; i < tracked_objects_size; i++){
-                        if (i == 0)
-                        {
-                            cv::rectangle(tracking_mat, cv::Rect(m_tracked_objects->at(i).x, m_tracked_objects->at(i).y,
-                                                                 m_tracked_objects->at(i).w, m_tracked_objects->at(i).h), cv::Scalar(100), -1);
-                            cv::circle(tracking_mat, cv::Point(roundToInt(m_tracked_objects->at(i).cx),
-                                                               roundToInt(m_tracked_objects->at(i).cy)), 10, cv::Scalar(255), 2);
-                            cv::putText(tracking_mat, std::to_string(tracked_objects_size),
-                                        cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 1, 255, 3);
-                        }
-                        else
-                        {
-                            cv::circle(tracking_mat, cv::Point(roundToInt(m_tracked_objects->at(i).cx),
-                                                               roundToInt(m_tracked_objects->at(i).cy)), 5, cv::Scalar(255), -1);
-                            cv::rectangle(tracking_mat, cv::Rect(m_tracked_objects->at(i).x, m_tracked_objects->at(i).y,
-                                                                 m_tracked_objects->at(i).w, m_tracked_objects->at(i).h), cv::Scalar(255), 1);
-                        }
-                        //                   cv::putText(tracking_mat, std::to_string((int)(mm_per_pix * tmp_tr_obj[i].w))+" x "+std::to_string((int)(mm_per_pix * tmp_tr_obj[i].h)),
-                        //                               cv::Point(tmp_tr_obj[i].x, tmp_tr_obj[i].y), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
+                    cv::putText(tracking_mat, std::to_string(tracked_objects_size), cv::Point(20, 40),
+                                cv::FONT_HERSHEY_SIMPLEX, 1, 255, 3);
+                    for (size_t i = 0; i < tracked_objects_size; i++)
+                    {
+                        auto tmpobj = m_tracked_objects->at(i);
+                        cv::putText(tracking_mat, "# "+std::to_string(tmpobj.unique_id),
+                                    cv::Point(roundToInt(tmpobj.cx)-20, roundToInt(tmpobj.cy)-40),
+                                    cv::FONT_HERSHEY_SIMPLEX, 1, 255, 3);
+                        cv::rectangle(tracking_mat, cv::Rect(tmpobj.x, tmpobj.y, tmpobj.w, tmpobj.h),
+                                      cv::Scalar(255), 2);
+                        cv::circle(tracking_mat, cv::Point(roundToInt(tmpobj.cx), roundToInt(tmpobj.cy)),
+                                   10, cv::Scalar(255), 2);
                     }
                     m_mat_tra_mtx.lock();
                     m_current_mat_tra = tracking_mat;

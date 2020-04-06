@@ -7,6 +7,7 @@
 #include <iostream>
 #include <thread>
 #include <mutex>
+#include <numeric>
 
 #include <opencv2/core/utility.hpp>
 #include <opencv2/core/core.hpp>
@@ -28,13 +29,15 @@ private:
     // internal buffers and mutexes
     cv::Mat** m_cvcap_buf;
     size_t m_cvcap_write_idx, m_cvcap_read_idx;
-    std::mutex m_marker_mutex;
+    std::mutex m_cvcap_mtx;
 
     shared_data_t* m_tracked_objects_buf = new shared_data_t();
 
 
-    size_t m_objects_write_idx, m_objects_read_idx;
-    std::mutex m_objects_mutex;
+    std::vector<double> m_vel_x, m_vel_y;
+
+
+    size_t m_vel_idx = 0;
 
     // external refs
     std::mutex* m_mutex_ref;
@@ -50,12 +53,12 @@ private:
 
     tracked_object_t *m_input_objects;
     std::vector<tracked_object_t> *m_tracked_objects;
-    int m_max_disappeared = 5;
+    int m_max_disappeared = 1;
     uint16_t m_id_ctr = 0;
 
-    // current mats for imshow
-    cv::Mat m_current_mat_seg, m_current_mat_tra;
-    std::mutex m_mat_seg_mtx, m_mat_tra_mtx;
+    // cv::Mats for cv::imshow
+    cv::Mat m_current_mat_cap, m_current_mat_seg, m_current_mat_tra;
+    std::mutex m_mat_cap_mtx, m_mat_seg_mtx, m_mat_tra_mtx;
 
     // debug variables
 #if (VERBOSE > 0)
@@ -101,16 +104,16 @@ private:
 #endif
             prepareObjectMarkers(image, markers);
             // write to buffer
-            m_marker_mutex.lock();
+            m_cvcap_mtx.lock();
             m_cvcap_buf[m_cvcap_write_idx][0] = image;
             m_cvcap_buf[m_cvcap_write_idx++][1] = markers;
             if (m_cvcap_write_idx == BUF_SIZE_CVCAP)
                 m_cvcap_write_idx = 0;
+            m_cvcap_mtx.unlock();
 #if (VERBOSE > 0)
             std::cout << "(OpenCV capture) Increased write index: " << m_cvcap_write_idx << " size0 " << image.size() << " type0 " << image.type() << " size1 "
                       << markers.size() << " type1 " << markers.type() << std::endl;
 #endif
-            m_marker_mutex.unlock();
 #if (VERBOSE > 0)
             std::cout << "(OpenCV capture) Total took: " << std::chrono::duration_cast<std::chrono::milliseconds>
                          (std::chrono::steady_clock::now()-m_start_time_cap).count() << " ms" << std::endl;
@@ -131,7 +134,7 @@ private:
                 m_start_time_seg = std::chrono::steady_clock::now();
 #endif
                 // Get segmentation markers
-                m_marker_mutex.lock();
+                m_cvcap_mtx.lock();
                 cv::Mat color = m_cvcap_buf[m_cvcap_read_idx][0];
                 cv::Mat marker = m_cvcap_buf[m_cvcap_read_idx++][1];
                 if (m_cvcap_read_idx == BUF_SIZE_POINTS)
@@ -140,7 +143,7 @@ private:
                 std::cout << "(OpenCV segmentation) Increased read index: " << m_cvcap_read_idx << " size0 " << color.size() << " type0 " << color.type() << " size1 "
                           << marker.size() << " type1 " << marker.type() << std::endl;
 #endif
-                m_marker_mutex.unlock();
+                m_cvcap_mtx.unlock();
 #if (VERBOSE > 1)
                 std::cout << "Before watershed: " << std::chrono::duration_cast
                              <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
@@ -156,36 +159,41 @@ private:
                 // Get object positions
                 cv::Mat labels, stats, centroids;
                 int marker_count = cv::connectedComponentsWithStats(marker, labels, stats, centroids, 4, CV_32S); // 10-15 ms
-                tmp_tr_obj = new tracked_object_t[marker_count]();
-
-                // Fill array with segmented objects
-                for (int i = 0; i < marker_count; i++)
+                int skip = 2; // !!! First two objects are just background
+                int objects_count = marker_count - skip;
+                if (marker_count > skip)
                 {
-                    tmp_tr_obj[i].x = stats.at<int>(i, cv::CC_STAT_LEFT);
-                    tmp_tr_obj[i].y = stats.at<int>(i, cv::CC_STAT_TOP);
-                    tmp_tr_obj[i].w = stats.at<int>(i, cv::CC_STAT_WIDTH);
-                    tmp_tr_obj[i].h = stats.at<int>(i, cv::CC_STAT_HEIGHT);
-                    tmp_tr_obj[i].area = stats.at<int>(i, cv::CC_STAT_AREA);
-                    tmp_tr_obj[i].cx = centroids.at<double>(i, 0);
-                    tmp_tr_obj[i].cy = centroids.at<double>(i, 1);
-                    tmp_tr_obj[i].unique_id = -1;
-                    tmp_tr_obj[i].lost_ctr = 0;
+                    tmp_tr_obj = new tracked_object_t[objects_count]();
+                    // Fill array with segmented objects
+                    for (int i = 0; i < objects_count; i++)
+                    {
+                        tmp_tr_obj[i].x = stats.at<int>(i+skip, cv::CC_STAT_LEFT);
+                        tmp_tr_obj[i].y = stats.at<int>(i+skip, cv::CC_STAT_TOP);
+                        tmp_tr_obj[i].w = stats.at<int>(i+skip, cv::CC_STAT_WIDTH);
+                        tmp_tr_obj[i].h = stats.at<int>(i+skip, cv::CC_STAT_HEIGHT);
+                        tmp_tr_obj[i].area = stats.at<int>(i+skip, cv::CC_STAT_AREA);
+                        tmp_tr_obj[i].cx = centroids.at<double>(i+skip, 0);
+                        tmp_tr_obj[i].cy = centroids.at<double>(i+skip, 1);
+                        tmp_tr_obj[i].unique_id = -1;
+                        tmp_tr_obj[i].lost_ctr = 0;
 #if (IMSHOW > 0 && VERBOSE > 0)
-                    // Draw markers on cv window
-                    cv::rectangle(marker, cv::Rect(tmp_tr_obj[i].x, tmp_tr_obj[i].y,
-                                                   tmp_tr_obj[i].w, tmp_tr_obj[i].h), cv::Scalar(0), 1);
-                    cv::putText(marker, std::to_string(static_cast<int>(mm_per_pix * tmp_tr_obj[i].w))
-                                + " x "+std::to_string(static_cast<int>(mm_per_pix * tmp_tr_obj[i].h)),
-                                cv::Point(tmp_tr_obj[i].x, tmp_tr_obj[i].y),
-                                cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
-                    cv::circle(marker, cv::Point(roundToInt(tmp_tr_obj[i].cx), roundToInt(tmp_tr_obj[i].cy)),
-                               10, cv::Scalar(255), -1);
+                        // Draw markers on cv window
+                        cv::rectangle(marker, cv::Rect(tmp_tr_obj[i].x, tmp_tr_obj[i].y,
+                                                       tmp_tr_obj[i].w, tmp_tr_obj[i].h), cv::Scalar(0), 1);
+                        cv::circle(marker, cv::Point2d(tmp_tr_obj[i].cx, tmp_tr_obj[i].cy),
+                                   10, cv::Scalar(255), -1);
+                        cv::putText(marker, "id: "+std::to_string(i)+" area: "+std::to_string(static_cast<int>(mm_per_pix * tmp_tr_obj[i].w))
+                                    + " x "+std::to_string(static_cast<int>(mm_per_pix * tmp_tr_obj[i].h)),
+                                    cv::Point(tmp_tr_obj[i].x, tmp_tr_obj[i].cy),
+                                    cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
 #endif
+                    }
                 }
+                else tmp_tr_obj = new tracked_object_t[0]();
                 // Write segmented objects
                 m_tracked_objects_buf->mutex.lock();
                 m_tracked_objects_buf->tobj_ptr_queue.push(tmp_tr_obj);
-                m_tracked_objects_buf->arr_size_queue.push(static_cast<size_t>(marker_count));
+                m_tracked_objects_buf->arr_size_queue.push(static_cast<size_t>(objects_count));
                 m_tracked_objects_buf->mutex.unlock();
 #if (VERBOSE > 0)
                 std::cout << "(OpenCV segmentation) Increased queue size: " << m_tracked_objects_buf->tobj_ptr_queue.size() << " size: array of "
@@ -196,6 +204,9 @@ private:
                             cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
                 m_mat_seg_mtx.lock();
                 m_current_mat_seg = marker*(255/marker_count);
+                m_mat_seg_mtx.unlock();
+                m_mat_seg_mtx.lock();
+                m_current_mat_cap = color;
                 m_mat_seg_mtx.unlock();
 #endif
 #if (VERBOSE > 0)
@@ -245,9 +256,8 @@ private:
                               << "," << m_input_objects[i].cy << ")" << std::endl;
                 }
 #endif
-
                 // Track objects
-                std::vector<size_t> dereg_objs;
+                std::vector<size_t> lost_objects;
                 if (tracked_objects_size == 0 && input_objects_size == 0) // ||
                 {
                     break;
@@ -269,18 +279,18 @@ private:
                     {
                         m_tracked_objects->at(i).lost_ctr++;
                         if (m_tracked_objects->at(i).lost_ctr >= m_max_disappeared)
-                            dereg_objs.push_back(i);
+                            lost_objects.push_back(i);
                     }
                 }
                 else {
                     // Find minimum distances between points
-                    double min, max;
-                    int min_idx, max_idx;
                     std::vector<std::tuple<double,int,int>> min_dist_obj_to_inp, min_dist_inp_to_obj;
                     cv::Mat distances = centroidDistances(m_tracked_objects, m_input_objects, input_objects_size);
 #if (VERBOSE > 2)
                     std::cout << "Distance matrix ( " << tracked_objects_size << " x " << input_objects_size << " ):"<< std::endl << distances << std::endl;
 #endif
+                    double min, max;
+                    int min_idx, max_idx;
                     for (int row = 0; row < static_cast<int>(tracked_objects_size); row++)
                     {
                         cv::minMaxIdx(distances.row(row).t(), &min, &max, &min_idx, &max_idx);
@@ -294,7 +304,7 @@ private:
                     std::sort( min_dist_obj_to_inp.begin(), min_dist_obj_to_inp.end() );
                     std::sort( min_dist_inp_to_obj.begin(), min_dist_inp_to_obj.end() );
 
-#if (VERBOSE > 1)
+#if (VERBOSE > 2)
                     std::cout<<"Minima object -> input: "<< min_dist_obj_to_inp.size() <<std::endl;
                     for (size_t i=0;i<min_dist_obj_to_inp.size();i++) {
                         std::cout << std::get<0>(min_dist_obj_to_inp.at(i)) << " at row,col: ("
@@ -308,15 +318,14 @@ private:
                                   << std::get<2>(min_dist_inp_to_obj.at(i)) << ")" << std::endl;
                     }
 #endif
-
                     // Update existing points
                     std::vector<int> updated_objects;
                     std::vector<int> updated_inputs;
                     int ret;
                     for (size_t i = 0; i < min_dist_obj_to_inp.size(); i++)
                     {
-                        auto objidx =  std::get<1>(min_dist_obj_to_inp.at(i));
-                        auto inpidx = std::get<2>(min_dist_obj_to_inp.at(i));
+                        int objidx =  std::get<1>(min_dist_obj_to_inp.at(i));
+                        int inpidx = std::get<2>(min_dist_obj_to_inp.at(i));
                         ret = 0;
                         for (size_t j = 0; j < updated_inputs.size(); j++)
                         {
@@ -346,11 +355,40 @@ private:
                         {
                             auto tmp_new_obj = m_input_objects[inpidx];
                             auto tmp_old_obj = m_tracked_objects->at(static_cast<size_t>(objidx));
+
                             tmp_new_obj.unique_id = tmp_old_obj.unique_id;
                             tmp_new_obj.lost_ctr = 0;
+                            tmp_new_obj.vx = (tmp_new_obj.cx - tmp_old_obj.cx) / FRAME_PERIOD_CV_MS;
+                            tmp_new_obj.vy = (tmp_new_obj.cy - tmp_old_obj.cy) / FRAME_PERIOD_CV_MS;
                             m_tracked_objects->at(static_cast<size_t>(objidx)) = tmp_new_obj;
                             updated_inputs.push_back(inpidx);
                             updated_objects.push_back(objidx);
+
+
+                            //                            // move vel calculation somewhere else ...
+                            //                            if (m_vel_x.size() < BUF_SIZE_VEL)
+                            //                            {
+                            //                                m_vel_x.push_back(tmp_new_obj.vx);
+                            //                                m_vel_y.push_back(tmp_new_obj.vy);
+                            //                                m_vel_idx++;
+                            //                            }
+                            //                            else
+                            //                            {
+                            //                                if (m_vel_idx < BUF_SIZE_VEL-1)
+                            //                                {
+                            //                                    m_vel_idx++;
+                            //                                }
+                            //                                else {
+                            //                                    m_vel_idx = 0;
+                            //                                }
+                            //                                m_vel_x.at(m_vel_idx) = tmp_new_obj.vx;
+                            //                                m_vel_y.at(m_vel_idx) = tmp_new_obj.vy;
+                            //                            }
+                            //                            std::cout << "Added velocity: idx " << m_vel_idx << " vx " << tmp_new_obj.vx
+                            //                                      << " vy " << tmp_new_obj.vy << std::endl;
+
+
+
 #if (VERBOSE > 1)
                             std::cout << "Updated object: idx " << objidx << " with idx " << inpidx << " #"
                                       << tmp_new_obj.unique_id << " x " << tmp_new_obj.cx
@@ -384,7 +422,7 @@ private:
                                 tmp_obj.lost_ctr = 0;
                                 m_tracked_objects->push_back(tmp_obj);
 #if (VERBOSE > 1)
-                                std::cout << "New object: idx " << m_tracked_objects->size()-1 << " #" << m_tracked_objects->back().unique_id
+                                std::cout << "New object: # " << m_tracked_objects->back().unique_id
                                           << " x " << m_tracked_objects->back().cx
                                           << " y " << m_tracked_objects->back().cy << std::endl;
 #endif
@@ -393,12 +431,12 @@ private:
                     }
 
                     // Deregister lost objects
-                    std::vector<size_t> lost_objects;
                     for (size_t i=0; i<tracked_objects_size; i++)
                     {
                         auto tmp_obj = m_tracked_objects->at(i);
                         if (tmp_obj.lost_ctr >= m_max_disappeared)
                             lost_objects.push_back(i);
+
 #if (VERBOSE >= 0)
                         // Error check if same point already exists
                         for (size_t j = 0; j < tracked_objects_size; j++)
@@ -418,6 +456,29 @@ private:
                         tracked_objects_size = m_tracked_objects->size();
                     }
 #if (IMSHOW > 0 && VERBOSE > 0)
+
+                    // Calculate mean velocity vectors
+                    if ( !m_vel_x.empty() )
+                    {
+                        double sum_x = std::accumulate(m_vel_x.begin(), m_vel_x.end(), 0.0);
+                        double sum_y = std::accumulate(m_vel_y.begin(), m_vel_y.end(), 0.0);
+                        double mean_x = sum_x / m_vel_x.size();
+                        double mean_y = sum_y / m_vel_y.size();
+                        std::vector<double> diff_x(m_vel_x.size());
+                        std::vector<double> diff_y(m_vel_y.size());
+                        std::transform(m_vel_x.begin(), m_vel_x.end(), diff_x.begin(), [mean_x](double x) { return x - mean_x; });
+                        std::transform(m_vel_y.begin(), m_vel_y.end(), diff_y.begin(), [mean_y](double y) { return y - mean_y; });
+                        double sq_sum_x = std::inner_product(diff_x.begin(), diff_x.end(), diff_x.begin(), 0.0);
+                        double sq_sum_y = std::inner_product(diff_y.begin(), diff_y.end(), diff_y.begin(), 0.0);
+                        double stdev_x = std::sqrt(sq_sum_x / m_vel_x.size());
+                        double stdev_y = std::sqrt(sq_sum_y / m_vel_y.size());
+
+                        std::cout << "Velocity sum: " << sum_x << " x " << sum_y << " y" << std::endl;
+                        std::cout << "Velocity mean: " << mean_x << " x " << mean_y << " y" << std::endl;
+                        std::cout << "Velocity sqr sum: " << sq_sum_x << " x " << sq_sum_y << " y" << std::endl;
+                        std::cout << "Velocity std dev: " << stdev_x << " x " << stdev_y << " y" << std::endl;
+                    }
+
                     // Draw cv window
                     cv::Mat tracking_mat = cv::Mat::zeros(FRAME_HEIGHT_CV, FRAME_WIDTH_CV, CV_8U);
                     cv::putText(tracking_mat, std::to_string(tracked_objects_size), cv::Point(20, 40),
@@ -425,13 +486,17 @@ private:
                     for (size_t i = 0; i < tracked_objects_size; i++)
                     {
                         auto tmpobj = m_tracked_objects->at(i);
+                        auto ctr_point = cv::Point2d(tmpobj.cx, tmpobj.cy);
+                        auto vel_point = cv::Point2d(tmpobj.cx + (tmpobj.vx*FRAME_HEIGHT_CV*10),
+                                                     tmpobj.cy + (tmpobj.vy*FRAME_HEIGHT_CV*10));
+                        // Draw on cv::Mat
                         cv::putText(tracking_mat, "# "+std::to_string(tmpobj.unique_id),
                                     cv::Point(roundToInt(tmpobj.cx)-20, roundToInt(tmpobj.cy)-40),
                                     cv::FONT_HERSHEY_SIMPLEX, 1, 255, 3);
                         cv::rectangle(tracking_mat, cv::Rect(tmpobj.x, tmpobj.y, tmpobj.w, tmpobj.h),
                                       cv::Scalar(255), 2);
-                        cv::circle(tracking_mat, cv::Point(roundToInt(tmpobj.cx), roundToInt(tmpobj.cy)),
-                                   10, cv::Scalar(255), 2);
+                        cv::circle(tracking_mat, ctr_point, 10, cv::Scalar(150), 2);
+                        cv::arrowedLine(tracking_mat, ctr_point, vel_point, cv::Scalar(255), 2);
                     }
                     m_mat_tra_mtx.lock();
                     m_current_mat_tra = tracking_mat;
@@ -448,590 +513,27 @@ private:
         std::cout << "Tracking thread is exiting" << std::endl;
     }
 
-
-
-
-    void tracking_thread_graveyard()
-    {
-        std::cout << "OpenCV GRAVE tracking thread started # " << std::this_thread::get_id() << std::endl;
-        m_tracked_objects = new std::vector<tracked_object_t>();
-#if (IMSHOW_TRA > 0)
-        while( m_capture->isOpened() && cv::waitKey(1) != 27 )
-#else
-        while( m_capture->isOpened() )
-#endif
-        {
-            if ( !m_tracked_objects_buf->tobj_ptr_queue.empty() )
-            {
-                size_t input_objects_size, tracked_objects_size;
-                cv::Mat distances;
-                std::vector<size_t> lost_objects;
-                double min, max;
-                cv::Point minLoc, maxLoc;
-
-#if (VERBOSE > 0)
-                m_start_time_tra = std::chrono::steady_clock::now();
-#endif
-                // Read segmented input objects
-                m_tracked_objects_buf->mutex.lock();
-                input_objects_size = m_tracked_objects_buf->arr_size_queue.front();
-                m_tracked_objects_buf->arr_size_queue.pop();
-                m_input_objects = new tracked_object_t[input_objects_size]();
-                m_input_objects = m_tracked_objects_buf->tobj_ptr_queue.front();
-                m_tracked_objects_buf->tobj_ptr_queue.pop();
-                m_tracked_objects_buf->mutex.unlock();
-                tracked_objects_size = m_tracked_objects->size();
-#if (VERBOSE > 0)
-                std::cout << "(OpenCV tracking) Reduced queue size: " << m_tracked_objects_buf->tobj_ptr_queue.size() << " size: array of " << input_objects_size << std::endl;
-#endif
-#if (VERBOSE > 1)
-                std::cout << "Current object centroids: " << tracked_objects_size << std::endl;
-                for (size_t i = 0; i < tracked_objects_size; i++){
-                    std::cout << "idx "<< i <<" #" << m_tracked_objects->at(i).unique_id
-                              << " (" << m_tracked_objects->at(i).cx << ","
-                              << m_tracked_objects->at(i).cy << ")" << " lost: "
-                              << m_tracked_objects->at(i).lost_ctr << std::endl;
-                }
-                std::cout << "Current input centroids: " << input_objects_size << std::endl;
-                for (size_t i = 0; i < input_objects_size; i++) {
-                    std::cout << "idx "<< i <<" #" << m_input_objects[i].unique_id << " (" << m_input_objects[i].cx
-                              << "," << m_input_objects[i].cy << ")" << std::endl;
-                }
-#endif
-                // Track objects
-                if (tracked_objects_size == 0 && input_objects_size == 0) // ||
-                {
-                    // Do nothing
-                    std::cout << "tracking thread break" << std::endl;
-                    break;
-                }
-                else if (tracked_objects_size == 0 && input_objects_size > 0)
-                {
-                    // Register all input objects
-                    for (size_t i = 0; i < input_objects_size; i++)
-                    {
-                        auto tmp_obj = m_input_objects[i];
-                        tmp_obj.unique_id = m_id_ctr++;
-                        m_tracked_objects->push_back(tmp_obj);
-                    }
-                }
-                else if (tracked_objects_size > 0 && input_objects_size == 0)
-                {
-                    // Deregister all tracked objects
-                    for (size_t i = 0; i < tracked_objects_size; i++)
-                    {
-                        m_tracked_objects->at(i).lost_ctr++;
-                        if (m_tracked_objects->at(i).lost_ctr >= m_max_disappeared)
-                            lost_objects.push_back(i);
-                    }
-                }
-                else {
-                    std::vector<std::tuple<double,int,int>> total_min_distances,
-                            row_min_distances, col_min_distances, max_distances; // value, row, col
-                    // Compute centroid distances
-                    distances = centroidDistances(m_tracked_objects, m_input_objects, input_objects_size);
-#if (VERBOSE > 1)
-                    std::cout << "Distance matrix ( " << tracked_objects_size << " x " << input_objects_size << " ):"<< std::endl << distances << std::endl;
-#endif
-
-                    // Find min/max distances of known objects (rows)
-                    for (int i = 0; i < static_cast<int>(tracked_objects_size); i++)
-                    {
-                        cv::minMaxLoc(distances.row(i), &min, &max, &minLoc, &maxLoc);
-                        row_min_distances.push_back(std::make_tuple(min, i, minLoc.x));
-                        max_distances.push_back(std::make_tuple(max, i, maxLoc.x));
-                    }
-
-                    for (int i = 0; i < static_cast<int>(input_objects_size); i++)
-                    {
-                        cv::minMaxLoc(distances.col(i), &min, &max, &minLoc, &maxLoc);
-                        col_min_distances.push_back(std::make_tuple(min, minLoc.y, i));
-                    }
-
-
-
-
-                    // Sort extreme values
-                    total_min_distances.reserve( row_min_distances.size() + col_min_distances.size() );
-                    total_min_distances.insert( total_min_distances.end(), row_min_distances.begin(), row_min_distances.end() );
-                    total_min_distances.insert( total_min_distances.end(), col_min_distances.begin(), col_min_distances.end() );
-
-
-
-                    //#ifdef remove_duplicate_vals
-                    //                    std::sort( total_min_distances.begin(), total_min_distances.end() );
-                    //                    total_min_distances.erase( std::unique( total_min_distances.begin(), total_min_distances.end()), total_min_distances.end() );
-                    //#else
-                    std::sort( total_min_distances.begin(), total_min_distances.end() );
-                    // remove duplicate row/col pairs
-                    total_min_distances.erase( std::unique (total_min_distances.begin(), total_min_distances.end(),
-                                                            [](const std::tuple<double,int,int> &l, const std::tuple<double,int,int> &r) {
-                        return (std::get<1>(l) == std::get<1>(r)) && (std::get<2>(l) == std::get<2>(r));
-                    }), total_min_distances.end() );
-                    //#endif
-
-                    //#else
-                    //                    // sort by cols
-                    //                    std::sort( total_min_distances.begin(), total_min_distances.end(), [](const std::tuple<double,int,int> &a, const std::tuple<double,int,int> &b) {
-                    //                        return (std::get<2>(a) < std::get<2>(b));
-                    //                    } );
-                    //                    // remove duplicate col pairs
-                    //                    total_min_distances.erase( std::unique (total_min_distances.begin(), total_min_distances.end(),
-                    //                                                            [](const std::tuple<double,int,int> &l, const std::tuple<double,int,int> &r) {
-                    //                        return (std::get<2>(l) == std::get<2>(r));
-                    //                    }), total_min_distances.end() );
-                    //                    // sort by vals
-                    //                    std::sort( total_min_distances.begin(), total_min_distances.end() );
-
-
-                    std::sort(row_min_distances.begin(), row_min_distances.end());
-                    std::sort(col_min_distances.begin(), col_min_distances.end());
-                    std::sort(max_distances.begin(), max_distances.end(), std::greater<std::tuple<double,int,int>>());
-
-
-
-
-#if (VERBOSE > 1)
-                    std::cout<<"Minima rows: "<< row_min_distances.size() <<std::endl;
-                    for (size_t i=0;i<row_min_distances.size();i++) {
-                        std::cout << std::get<0>(row_min_distances.at(i)) << " at row,col: (" << std::get<1>(row_min_distances.at(i)) << ","
-                                  << std::get<2>(row_min_distances.at(i)) << ")" << std::endl;
-                    }
-                    std::cout<<"Minima cols: "<< col_min_distances.size() <<std::endl;
-                    for (size_t i=0;i<col_min_distances.size();i++) {
-                        std::cout << std::get<0>(col_min_distances.at(i)) << " at row,col: (" << std::get<1>(col_min_distances.at(i)) << ","
-                                  << std::get<2>(col_min_distances.at(i)) << ")" << std::endl;
-                    }
-                    std::cout<<"Maxima: "<< max_distances.size() << std::endl;
-                    for (size_t i=0;i<max_distances.size();i++) {
-                        std::cout << std::get<0>(max_distances.at(i)) << " at row,col: (" << std::get<1>(max_distances.at(i)) << ","
-                                  << std::get<2>(max_distances.at(i)) << ")" << std::endl;
-                    }
-                    std::cout<<"Minima total: "<< total_min_distances.size() <<std::endl;
-                    for (size_t i=0;i<total_min_distances.size();i++) {
-                        std::cout << std::get<0>(total_min_distances.at(i)) << " at row,col: (" << std::get<1>(total_min_distances.at(i)) << ","
-                                  << std::get<2>(total_min_distances.at(i)) << ")" << std::endl;
-                    }
-#endif
-
-
-
-
-
-
-
-
-
-
-                    // Update objects
-                    std::vector<size_t> used_objects;
-                    std::vector<size_t> used_inputs;
-                    for (size_t i = 0; i < total_min_distances.size(); i++)
-                    {
-                        size_t obj_idx = static_cast<size_t>(std::get<1>(total_min_distances[i]))/*row*/;
-                        size_t inp_idx = static_cast<size_t>(std::get<2>(total_min_distances[i]))/*col*/;
-                        auto tmp_new_obj = m_input_objects[inp_idx];
-                        auto tmp_old_obj = m_tracked_objects->at(obj_idx);
-                        std::cout << "DEBUG comparing object idx " << obj_idx
-                                  << " with inp idx " << inp_idx << std::endl;
-                        //                        if (tmp_old_obj.lost_ctr == 0)
-                        //                        {
-                        bool input_used = false;
-                        bool object_used = false;
-                        for (size_t inidx=0; inidx < used_inputs.size(); inidx++) {
-                            std::cout << "DEBUG used inputs print: " << used_inputs.at(inidx) << std::endl;
-                            if (inp_idx == used_inputs.at(inidx))
-                            {
-                                input_used = true;
-                                std::cout << "DEBUG input index already used: " << inp_idx << std::endl;
-                            }
-                        }
-                        for (size_t oidx=0; oidx < used_objects.size(); oidx++) {
-                            std::cout << "DEBUG used objects print: " << used_objects.at(oidx) << std::endl;
-                            if (obj_idx == used_objects.at(oidx))
-                            {
-                                object_used = true;
-                                std::cout << "DEBUG object index already used: " << obj_idx << std::endl;
-                            }
-                        }
-
-                        if (!input_used && !object_used)
-                        {
-                            std::cout << "DEBUG UPDATE: obj idx " << obj_idx
-                                      << " with inp idx " << inp_idx << std::endl;
-                            tmp_new_obj.unique_id = tmp_old_obj.unique_id;
-                            m_tracked_objects->at(obj_idx) = tmp_new_obj;
-                            used_inputs.push_back(inp_idx);
-                            used_objects.push_back(obj_idx);
-#if (VERBOSE > 1)
-                            std::cout << "Updated object: idx " << obj_idx << " with idx " << inp_idx << " #"
-                                      << tmp_new_obj.unique_id << " x " << tmp_new_obj.cx
-                                      << " y " << tmp_new_obj.cy << " lost "
-                                      << tmp_new_obj.lost_ctr << std::endl;
-
-                            if (used_objects.size() == tracked_objects_size ||
-                                    used_inputs.size() == input_objects_size)
-                            {
-                                std::cout << "DEBUG everthing updated" << std::endl;
-                                break;
-                            }
-#endif
-                        }
-                        //                        }
-                        else {
-                            std::cout << "DEBUG skipping object idx " << obj_idx << std::endl;
-                            if (used_objects.size() == tracked_objects_size ||
-                                    used_inputs.size() == input_objects_size)
-                            {
-                                std::cerr << "ERROR while updating centroids" << std::endl;
-                            }
-                        }
-                    }
-
-
-
-
-
-
-
-
-
-
-
-                    if (tracked_objects_size > input_objects_size)
-                    {
-
-                        // Deregister specific objects
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                        size_t to_delete = tracked_objects_size - input_objects_size;
-                        for (size_t i = 0; i < to_delete; i++)
-                        {
-                            size_t obj_idx = static_cast<size_t>(std::get<1>(max_distances[i]))/*row*/;
-                            if ( ++m_tracked_objects->at(obj_idx).lost_ctr >= m_max_disappeared)
-                            {
-                                lost_objects.push_back(obj_idx);
-#if (VERBOSE > 1)
-                                std::cout << "Deleting object: idx " << lost_objects.back() << " #" << m_tracked_objects->at(obj_idx).unique_id
-                                          << " x " << m_tracked_objects->at(obj_idx).cx
-                                          << " y " << m_tracked_objects->at(obj_idx).cy << std::endl;
-#endif
-                            }
-#if (VERBOSE > 1)
-                            else {
-                                std::cout << "Lost object: idx " << obj_idx << " #"
-                                          << m_tracked_objects->at(obj_idx).unique_id << " lost "
-                                          << m_tracked_objects->at(obj_idx).lost_ctr << std::endl;
-                            }
-#endif
-                        }
-                    }
-                    else if (tracked_objects_size < input_objects_size)
-                    {
-                        // Register specific objects
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                        for (size_t i=0; i<col_min_distances.size(); i++) {
-                            bool new_object = true;
-                            for (size_t j=0; j<row_min_distances.size(); j++) {
-                                if ( std::get<2>(col_min_distances[i]) == std::get<2>(row_min_distances[j]))
-                                    new_object = false;
-                            }
-                            if (new_object)
-                            {
-                                size_t inp_idx = static_cast<size_t>(std::get<2>(col_min_distances[i]));
-                                auto tmp_obj = m_input_objects[inp_idx];
-                                tmp_obj.unique_id = m_id_ctr++;
-                                m_tracked_objects->push_back(tmp_obj);
-#if (VERBOSE > 1)
-                                std::cout << "New object: idx " << m_tracked_objects->size()-1 << " #" << m_tracked_objects->back().unique_id
-                                          << " x " << m_tracked_objects->back().cx
-                                          << " y " << m_tracked_objects->back().cy << std::endl;
-#endif
-                            }
-
-                        }
-                    }
-
-
-
-
-
-
-
-
-
-
-#ifdef update_by_incr_objects
-                    std::vector<size_t> used_inputs;
-                    for (size_t i = 0; i < tracked_objects_size; i++)
-                    {
-                        if (m_tracked_objects->at(i).lost_ctr == 0)
-                        {
-                            size_t inp_idx = std::numeric_limits<size_t>::max();
-                            std::cout << "loop tracked objs with lost==0: "<< i << std::endl;
-                            for (size_t j = 0; j < total_min_distances.size(); j++)
-                            {
-                                std::cout << "loop total mins "<< j << std::endl;
-                                if (i == static_cast<size_t>(std::get<1>(total_min_distances[j])))
-                                {
-                                    bool used = false;
-                                    std::cout << "DEBUG object " << i << " is the same as row " << j
-                                              << std::endl;
-
-                                    inp_idx = static_cast<size_t>(std::get<2>(total_min_distances[j]));
-
-                                    for (size_t k=0;k<used_inputs.size();k++) {
-                                        std::cout << "DEBUG used inputs print: " << used_inputs.at(k) << std::endl;
-                                        if (inp_idx == used_inputs.at(k))
-                                        {
-                                            used = true;
-                                            // inp_idx = static_cast<size_t>(std::get<2>(total_min_distances[i+1]));
-                                            std::cout << "DEBUG input index already used: " << inp_idx << std::endl;
-
-                                        }
-                                    }
-                                    if (!used) break;
-                                    else std::cout << "use some other idx here" << std::endl;
-
-                                    //  break;
-                                }
-                            }
-
-                            if (inp_idx < input_objects_size)
-                            {
-                                std::cout << "DEBUG UPDATE: obj idx " << i << " with inp idx "
-                                          << inp_idx << std::endl;
-                                auto tmp_new_obj = m_input_objects[inp_idx];
-                                auto tmp_old_obj = m_tracked_objects->at(i);
-                                tmp_new_obj.unique_id = tmp_old_obj.unique_id;
-                                tmp_new_obj.lost_ctr = tmp_old_obj.lost_ctr;
-                                m_tracked_objects->at(i) = tmp_new_obj;
-                                used_inputs.push_back(inp_idx);
-#if (VERBOSE > 1)
-                                std::cout << "Updated object: idx " << i << " with idx " << inp_idx << " #"
-                                          << tmp_new_obj.unique_id << " x " << tmp_new_obj.cx
-                                          << " y " << tmp_new_obj.cy << " lost "
-                                          << tmp_new_obj.lost_ctr << std::endl;
-#endif
-                            }
-                            else std::cerr << "Not a valid input index" << std::endl;
-                        }
-
-                    }
-#endif
-
-
-                    //                    std::vector<size_t> used_inputs;
-                    //                    for (size_t i = 0; i < tracked_objects_size; i++)
-                    //                    {
-                    //                        size_t obj_idx = static_cast<size_t>(std::get<1>(total_min_distances[i]))/*row*/;
-                    //                        size_t inp_idx = static_cast<size_t>(std::get<2>(total_min_distances[i]))/*col*/;
-                    //                        auto tmp_new_obj = m_input_objects[inp_idx];
-                    //                        auto tmp_old_obj = m_tracked_objects->at(obj_idx);
-                    //                        if (m_tracked_objects->at(obj_idx).lost_ctr == 0)
-                    //                        {
-                    //                            bool input_used = false;
-                    //                            for (size_t j=0;j<used_inputs.size();j++) {
-                    //                                if (inp_idx == used_inputs.at(j))
-                    //                                {
-                    //                                    input_used = true;
-                    //                                    inp_idx = static_cast<size_t>(std::get<2>(total_min_distances[i+1]));
-                    //                                }
-                    //                            }
-                    //                            tmp_new_obj.unique_id = tmp_old_obj.unique_id;
-                    //                            tmp_new_obj.lost_ctr = tmp_old_obj.lost_ctr;
-                    //                            m_tracked_objects->at(obj_idx) = tmp_new_obj;
-                    //                            used_inputs.push_back(inp_idx);
-                    //#if (VERBOSE > 1)
-                    //                            std::cout << "Updated object: idx " << obj_idx << " with idx " << inp_idx << " #"
-                    //                                      << tmp_old_obj.unique_id << " x " << tmp_old_obj.cx
-                    //                                      << " y " << tmp_old_obj.cy << " lost "
-                    //                                      << tmp_old_obj.lost_ctr << std::endl;
-                    //#endif
-                    //                        }
-                    //                        else
-                    //                        {
-                    //                            std::cout << "NOT updated object: " << obj_idx << " #"
-                    //                                      << tmp_old_obj.unique_id << std::endl;
-                    //                        }
-                    //                    }
-
-                    //                    // UPDATE
-                    //                    std::vector<size_t> used_inputs;
-                    //                    for (size_t i=0; i<row_min_distances.size(); i++) {
-                    //                        //  bool skip = false;
-                    //                        size_t inp_idx = static_cast<size_t>(std::get<2>(row_min_distances[i]));
-                    //                        size_t obj_idx = static_cast<size_t>(std::get<1>(row_min_distances[i]));
-                    //                        for (size_t j=0; j < used_inputs.size(); j++) {
-                    //                            std::cout << "used inputs: " << used_inputs.at(j) << std::endl;
-                    //                            if (inp_idx == used_inputs.at(j))
-                    //                            {
-                    //                                std::cout << "skipping: " << inp_idx << std::endl;
-                    //                                //  skip = true;
-                    //                                for (size_t k=0; k < col_min_distances.size(); k++) {
-                    //                                    auto tmp_idx = static_cast<size_t>(std::get<2>(col_min_distances[k]));
-                    //                                    if (tmp_idx != used_inputs.at(j))
-                    //                                    {
-                    //                                        inp_idx = tmp_idx;
-                    //                                        std::cout << "using: " << inp_idx << std::endl;
-                    //                                        break;
-                    //                                    }
-                    //                                }
-                    //                            }
-                    //                        }
-                    //                        if (m_tracked_objects->at(obj_idx).lost_ctr == 0)
-                    //                        {
-                    //                            std::cout << "updating object " << obj_idx << " #" << m_tracked_objects->at(obj_idx).unique_id
-                    //                                      << " with input " << inp_idx << " #" << m_input_objects[inp_idx].unique_id << std::endl;
-                    //                            auto tmp_obj = m_input_objects[inp_idx];
-                    //                            tmp_obj.unique_id = m_tracked_objects->at(obj_idx).unique_id;
-                    //                            tmp_obj.lost_ctr = m_tracked_objects->at(obj_idx).lost_ctr;
-                    //                            m_tracked_objects->at(obj_idx) = tmp_obj;
-                    //                            used_inputs.push_back(inp_idx);
-                    //#if (VERBOSE > 1)
-                    //                            std::cout << "Updated object: idx " << obj_idx << " #" << m_tracked_objects->at(obj_idx).unique_id
-                    //                                      << " x " << m_tracked_objects->at(obj_idx).cx << " y "
-                    //                                      << m_tracked_objects->at(obj_idx).cy << " lost " << m_tracked_objects->at(obj_idx).lost_ctr << std::endl;
-                    //#endif
-                    //                        }
-                    //                        else  {
-                    //                            std::cout << "NOT updating object " << obj_idx << " #" << m_tracked_objects->at(obj_idx).unique_id
-                    //                                      << " with input " << inp_idx << " #" << m_input_objects[inp_idx].unique_id << std::endl;
-                    //                        }
-                    //                    }
-
-
-
-
-
-
-                    //                // Update current objects
-                    //                for (size_t i = 0; i < tracked_objects_size; i++)
-                    //                {
-                    //                    size_t obj_idx = static_cast<size_t>(std::get<1>(row_min_distances[i]))/*row*/;
-                    //                    size_t inp_idx = static_cast<size_t>(std::get<2>(row_min_distances[i]))/*col*/;
-                    //                    auto tmp_obj = m_input_objects[inp_idx];
-                    //                    tmp_obj.unique_id = m_tracked_objects->at(obj_idx).unique_id;
-                    //                    tmp_obj.lost_ctr = m_tracked_objects->at(obj_idx).lost_ctr;
-                    //                    m_tracked_objects->at(obj_idx) = tmp_obj;
-                    //#if (VERBOSE > 1)
-                    //                    std::cout << "Updated object: idx " << obj_idx << " #" << m_tracked_objects->at(obj_idx).unique_id
-                    //                              << " x " << m_tracked_objects->at(obj_idx).cx << " y "
-                    //                              << m_tracked_objects->at(obj_idx).cy << " lost " << m_tracked_objects->at(obj_idx).lost_ctr << std::endl;
-                    //#endif
-                    //                }
-                }
-
-#if (VERBOSE >= 0)
-                // Error check if same point already exists
-                for (size_t i=0; i<tracked_objects_size; i++) {
-                    auto tmp_obj = m_tracked_objects->at(i);
-                    for (size_t j = 0; j < tracked_objects_size; j++) {
-                        if ( (i != j) && areSame(tmp_obj.cx, m_tracked_objects->at(j).cx)
-                             && areSame(tmp_obj.cy, m_tracked_objects->at(j).cy) )
-                            std::cerr << "ERROR Point match: obj idx "<< j << " #"
-                                      << m_tracked_objects->at(j).unique_id << " ("
-                                      << m_tracked_objects->at(j).cx << ","
-                                      << m_tracked_objects->at(j).cy << ") " << std::endl;
-                    }
-                }
-#endif
-                // Deregister lost objects
-                if ( !lost_objects.empty() )
-                {
-                    deregisterObjects(&lost_objects, m_tracked_objects);
-                    tracked_objects_size = m_tracked_objects->size();
-                }
-
-
-
-
-
-
-#if (IMSHOW > 0 && VERBOSE > 0)
-                cv::Mat tracking_mat = cv::Mat::zeros(FRAME_HEIGHT_CV, FRAME_WIDTH_CV, CV_8U);
-                for (size_t i = 0; i < tracked_objects_size; i++){
-                    if (i == 0)
-                    {
-                        cv::rectangle(tracking_mat, cv::Rect(m_tracked_objects->at(i).x, m_tracked_objects->at(i).y,
-                                                             m_tracked_objects->at(i).w, m_tracked_objects->at(i).h), cv::Scalar(100), -1);
-                        cv::circle(tracking_mat, cv::Point(roundToInt(m_tracked_objects->at(i).cx),
-                                                           roundToInt(m_tracked_objects->at(i).cy)), 10, cv::Scalar(255), 2);
-                        cv::putText(tracking_mat, std::to_string(tracked_objects_size),
-                                    cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 1, 255, 3);
-                    }
-                    else
-                    {
-                        cv::circle(tracking_mat, cv::Point(roundToInt(m_tracked_objects->at(i).cx),
-                                                           roundToInt(m_tracked_objects->at(i).cy)), 5, cv::Scalar(255), -1);
-                        cv::rectangle(tracking_mat, cv::Rect(m_tracked_objects->at(i).x, m_tracked_objects->at(i).y,
-                                                             m_tracked_objects->at(i).w, m_tracked_objects->at(i).h), cv::Scalar(255), 1);
-                    }
-                    //                   cv::putText(tracking_mat, std::to_string((int)(mm_per_pix * tmp_tr_obj[i].w))+" x "+std::to_string((int)(mm_per_pix * tmp_tr_obj[i].h)),
-                    //                               cv::Point(tmp_tr_obj[i].x, tmp_tr_obj[i].y), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
-                }
-                m_mat_tra_mtx.lock();
-                m_current_mat_tra = tracking_mat;
-                m_mat_tra_mtx.unlock();
-#endif
-
-
-
-#if (VERBOSE > 0)
-                std::cout << "(OpenCV tracking) Total took: " << std::chrono::duration_cast<std::chrono::milliseconds>
-                             (std::chrono::steady_clock::now()-m_start_time_tra).count() << " ms" << std::endl;
-#endif
-            }
-            else std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_TRAC));
-        }
-        std::cout << "Tracking thread is exiting" << std::endl;
-    }
-
     void imshow_thread_func()
     {
-        while( m_capture->isOpened() && cv::waitKey(1) != 27 )
+        while( m_capture->isOpened() && cv::waitKey(DELAY_SHOW) != 27 )
         {
+            m_mat_cap_mtx.lock();
+            cv::Mat cap = m_current_mat_cap;
+            m_mat_cap_mtx.unlock();
+            if ( !cap.empty() )
+                cv::imshow("Capture", cap);
             m_mat_seg_mtx.lock();
             cv::Mat seg = m_current_mat_seg;
             m_mat_seg_mtx.unlock();
+            if ( !seg.empty() )
+                cv::imshow("Segmentation", seg);
             m_mat_tra_mtx.lock();
             cv::Mat tra = m_current_mat_tra;
             m_mat_tra_mtx.unlock();
-            if ( !seg.empty() && !tra.empty() )
-            {
-                cv::imshow("Segmentation", seg);
-                cv::imshow("Tracking" , tra);
-            }
-            else std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_SHOW));
+            if ( !tra.empty() )
+                cv::imshow("Tracking", tra);
+            if ( cap.empty() && seg.empty() && tra.empty() )
+                std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_SHOW));
         }
     }
 
@@ -1041,7 +543,6 @@ private:
         std::sort(obj_idxs->begin(), obj_idxs->end(), std::greater<size_t>());
         for (size_t i = 0; i < obj_idxs->size(); i++) {
             auto idx = obj_idxs->at(i);
-            std::cout << "deleting object idx " << idx << " #" << obj_centr->at(idx).unique_id << std::endl;
             obj_centr->erase(obj_centr->begin() + static_cast<long>(idx));
         }
     }
@@ -1083,11 +584,9 @@ public:
         }
         m_cvcap_write_idx = m_cvcap_read_idx = 0;
 
-        //   m_tracked_objects_buf = new TrackedObjectArr[BUF_SIZE_TOBJ]();
-        // m_tracked_objects_buf = new tracked_object*[BUF_SIZE_TOBJ];
+        m_vel_x.reserve(BUF_SIZE_VEL);
+        m_vel_y.reserve(BUF_SIZE_VEL);
 
-        //  m_tracked_objects_buf = new TrackedObjects[BUF_SIZE_TOBJ];
-        m_objects_write_idx = m_objects_read_idx = 0;
         // Start capturing, which starts the following threads
         m_capture_thread = std::thread(&OcvDevice::capture_thread_func, this);
 

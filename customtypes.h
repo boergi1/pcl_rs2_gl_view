@@ -14,10 +14,12 @@ typedef struct tracked_object_s {
     int w;
     int h;
     int area;
-    double cx;
-    double cy;
     int unique_id;
     int lost_ctr;
+    double cx;
+    double cy;
+    double vx;
+    double vy;
 } tracked_object_t;
 
 typedef struct shared_data_s

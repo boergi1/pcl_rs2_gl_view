@@ -57,8 +57,8 @@ private:
     uint16_t m_id_ctr = 0;
 
     // cv::Mats for cv::imshow
-    cv::Mat m_current_mat_cap, m_current_mat_seg, m_current_mat_tra;
-    std::mutex m_mat_cap_mtx, m_mat_seg_mtx, m_mat_tra_mtx;
+    cv::Mat m_current_mat_cap, m_current_mat_mark, m_current_mat_seg, m_current_mat_tra;
+    std::mutex m_mat_cap_mtx, m_mat_mark_mtx, m_mat_seg_mtx, m_mat_tra_mtx;
 
     // debug variables
 #if (VERBOSE > 0)
@@ -99,10 +99,8 @@ private:
 #endif
             // calculate markers
             cv::Mat markers = cv::Mat::zeros(image.size(), CV_32S);
-#if (IMSHOW_CAP > 0)
-            cv::imshow("Input", image);
-#endif
             prepareObjectMarkers(image, markers);
+
             // write to buffer
             m_cvcap_mtx.lock();
             m_cvcap_buf[m_cvcap_write_idx][0] = image;
@@ -113,6 +111,13 @@ private:
 #if (VERBOSE > 0)
             std::cout << "(OpenCV capture) Increased write index: " << m_cvcap_write_idx << " size0 " << image.size() << " type0 " << image.type() << " size1 "
                       << markers.size() << " type1 " << markers.type() << std::endl;
+#endif
+#if (IMSHOW > 0 && VERBOSE > 0)
+                m_mat_mark_mtx.lock();
+                markers.convertTo(markers, CV_8U);
+                markers.copyTo(m_current_mat_mark);
+                m_current_mat_mark = m_current_mat_mark*50;
+                m_mat_mark_mtx.unlock();
 #endif
 #if (VERBOSE > 0)
             std::cout << "(OpenCV capture) Total took: " << std::chrono::duration_cast<std::chrono::milliseconds>
@@ -148,14 +153,26 @@ private:
                 std::cout << "Before watershed: " << std::chrono::duration_cast
                              <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
 #endif
+
                 // Segmenting by watershed algorithm
+                // input
+                // 0 : unknown area
+                // 255 / 1? : background
+                // above: objects
+                // output
+                // -1 : dividing region
+                // 0 : none
+                // 1: bg
+                // bigger than 1 : distinct region
+
                 marker.convertTo(marker, CV_32S);
                 cv::watershed(color, marker); // 6-20 ms
-                marker.convertTo(marker, CV_8U);
+                marker.convertTo(marker, CV_8U); // borders have value 0 now
 #if (VERBOSE > 1)
                 std::cout << "After watershed: " << std::chrono::duration_cast
                              <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_seg).count() << " ms" << std::endl;
 #endif
+
                 // Get object positions
                 cv::Mat labels, stats, centroids;
                 int marker_count = cv::connectedComponentsWithStats(marker, labels, stats, centroids, 4, CV_32S); // 10-15 ms
@@ -205,9 +222,9 @@ private:
                 m_mat_seg_mtx.lock();
                 m_current_mat_seg = marker*(255/marker_count);
                 m_mat_seg_mtx.unlock();
-                m_mat_seg_mtx.lock();
-                m_current_mat_cap = color;
-                m_mat_seg_mtx.unlock();
+                m_mat_cap_mtx.lock();
+                color.copyTo(m_current_mat_cap);
+                m_mat_cap_mtx.unlock();
 #endif
 #if (VERBOSE > 0)
                 std::cout << "(OpenCV segmentation) Total took: " << std::chrono::duration_cast<std::chrono::milliseconds>
@@ -522,6 +539,11 @@ private:
             m_mat_cap_mtx.unlock();
             if ( !cap.empty() )
                 cv::imshow("Capture", cap);
+            m_mat_mark_mtx.lock();
+            cv::Mat mark = m_current_mat_mark;
+            m_mat_mark_mtx.unlock();
+            if ( !mark.empty() )
+                cv::imshow("Markers (watershed)", mark);
             m_mat_seg_mtx.lock();
             cv::Mat seg = m_current_mat_seg;
             m_mat_seg_mtx.unlock();
@@ -635,7 +657,6 @@ public:
                 cv::threshold(tmp, tmp, dist_trans_thresh*255, 255, cv::THRESH_BINARY);
             }
         }
-        //   cv::imshow("Normalized Distance Transformation Thresh", tmp);
 #if (VERBOSE > 1)
         std::cout << "(OpenCV capture) After normalize thresh: " << std::chrono::duration_cast
                      <std::chrono::milliseconds>(std::chrono::steady_clock::now()-m_start_time_cap).count() << " ms" << std::endl;
@@ -653,9 +674,6 @@ public:
         // manual marker operations
         markers.convertTo(tmp, CV_8U);
         cv::bitwise_or(tmp, background, tmp);
-#if (IMSHOW_CAP > 0)
-        cv::imshow("Watershed markers", tmp*(255/contours.size())-10);
-#endif
         tmp.convertTo(markers, CV_32S);
     }
 

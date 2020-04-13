@@ -16,11 +16,36 @@
 // Hardware parameters
 #define REF_PIXEL 60
 #define REF_SIZE_MM 26
-#define DIST_RS2_CV_X_MM 3000
-#define DIST_RS2_CV_Y_MM 0
-#define DIST_RS2_CV_Z_MM 100
-#define DIST_RS2_CONV 1000
 
+/*
+opencv cam: x,y (2d) same direction as central rs2, but after conversion to 3d point cs is in cam center
+          rotation and translation will change later
+*/
+#define TRAN_RS0_TO_CV0_X_MM 3000.0
+#define TRAN_RS0_TO_CV0_Y_MM 0.0
+#define TRAN_RS0_TO_CV0_Z_MM 100.0
+#define ROT_RS0_TO_CV0_X_ANG 0.0
+#define ROT_RS0_TO_CV0_Y_ANG 0.0
+#define ROT_RS0_TO_CV0_Z_ANG 0.0
+/*
+  central rs2 camera: +z directing towards conveyor, +y along the conveyor movement
+  other rs2 cams: rotation of z and y around x by a given angle + translation
+  opencv cam: x,y (2d) same direction as central rs2, but after conversion to 3d point cs is in cam center
+            rotation and translation will change later
+*/
+#define TRAN_RS1_TO_RS0_X_MM 0.0
+#define TRAN_RS1_TO_RS0_Y_MM -20.0
+#define TRAN_RS1_TO_RS0_Z_MM -10.0
+#define ROT_RS1_TO_RS0_X_ANG -30.0
+#define ROT_RS1_TO_RS0_Y_ANG 0.0
+#define ROT_RS1_TO_RS0_Z_ANG 0.0
+
+#define TRAN_RS2_TO_RS0_X_MM 0.0
+#define TRAN_RS2_TO_RS0_Y_MM 20.0
+#define TRAN_RS2_TO_RS0_Z_MM -10.0
+#define ROT_RS2_TO_RS0_X_ANG 30.0
+#define ROT_RS2_TO_RS0_Y_ANG 0.0
+#define ROT_RS2_TO_RS0_Z_ANG 0.0
 
 // Buffer sizes
 #define BUF_SIZE_POINTS 100

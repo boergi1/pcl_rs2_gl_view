@@ -5,7 +5,7 @@
 
 //}
 
-DeviceInterface::DeviceInterface() // : m_current_cloud(new pcl::PointCloud<pcl::PointXYZ>(FRAME_WIDTH,FRAME_HEIGHT))
+DeviceInterface::DeviceInterface()
 {
     std::cout << "Created instance of DeviceInterface" << std::endl;
     //  connectRealSenseDevices();

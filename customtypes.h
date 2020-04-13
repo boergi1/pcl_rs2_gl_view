@@ -16,20 +16,28 @@ typedef struct tracked_object_s {
     int area;
     int unique_id;
     int lost_ctr;
+    int seen_ctr;
     double cx;
     double cy;
     double vx;
     double vy;
 } tracked_object_t;
 
-typedef struct shared_data_s
+typedef struct shared_objects_s
 {
     std::queue<tracked_object_t*> tobj_ptr_queue;
     std::queue<size_t> arr_size_queue;
     uint64_t flag;
     std::mutex mutex;
-} shared_data_t;
+} shared_objects_t;
 
+typedef struct shared_references_s
+{
+    std::mutex* mtx_ref;
+    void* buf_ref;
+    size_t* w_idx_ref;
+    size_t* r_idx_ref;
+} shared_references_t;
 
 
 

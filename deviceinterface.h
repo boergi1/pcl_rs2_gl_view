@@ -5,12 +5,15 @@
 #include <librealsense2/rs.hpp>
 #include <thread>
 #include <mutex>
-#include "rs2device.h"
-#include "ocvdevice.h"
 
 #include <pcl/common/common_headers.h>
 
 #include <opencv2/core/core.hpp>
+
+#include "rs2device.h"
+#include "ocvdevice.h"
+#include "customtypes.h"
+
 
 class DeviceInterface
 {
@@ -23,6 +26,8 @@ private:
     std::vector<std::mutex *> m_rs2_dev_mtxs;
     std::vector<size_t> m_points_write_indexes;
     std::vector<size_t> m_points_read_indexes;
+
+    std::vector<shared_references_t> m_RS_data;
 
 
     rs2::device_list m_rs2_device_list;

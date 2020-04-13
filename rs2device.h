@@ -67,7 +67,7 @@ public:
         if (rs2::frameset fs = frame.as<rs2::frameset>())
         {
             if (fs.size() > 1)
-                std::cout << "More than 1 frame" << std::endl;
+                std::cout << "Multiple rs2 frames arrived:" << fs.size() << std::endl;
             const rs2::frame& depth_tmp = fs.get_depth_frame();
             rs2::pointcloud rs2_pc_cpu;
             rs2_pc_cpu.map_to(depth_tmp);

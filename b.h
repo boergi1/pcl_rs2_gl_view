@@ -18,7 +18,7 @@ typedef struct tracked_object_s {
     int lost_ctr;
 } tracked_object_t;
 
-typedef struct shared_data_s
+typedef struct shared_objects_s
 {
     std::queue<tracked_object_t*> queue;
     uint64_t some_flags_to_keep_track_of_stuff;

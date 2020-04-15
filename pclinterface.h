@@ -29,6 +29,7 @@
 #include <pcl/filters/extract_indices.h>
 
 #include "format.h"
+#include "customtypes.h"
 #include <thread>
 #include <mutex>
 #include <chrono>
@@ -40,6 +41,9 @@ private:
     pcl::PointCloud<pcl::PointXYZ>::Ptr m_proc_cloud = nullptr; // todo mutex this
     pcl::PointCloud<pcl::PointXYZ>::Ptr m_filtered_cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr
             (new pcl::PointCloud<pcl::PointXYZ>);
+
+    std::vector<shared_references_t> m_PCL_data;
+
     size_t m_clouds_write_idx = 0;
     size_t m_clouds_read_idx = 0;
 
@@ -132,9 +136,21 @@ private:
     }
 
 public:
-    PclInterface(size_t pc_devices_count) : m_pcl_viewer("Cloud Viewer")
+    PclInterface(uint32_t device_count) : m_pcl_viewer("Cloud Viewer")
     {
-        m_clouds_buf_step = pc_devices_count;
+        m_clouds_buf_step = device_count;
+
+        m_PCL_data.clear();
+        m_PCL_data.resize(device_count);
+
+        for (uint32_t i=0; i < device_count; i++)
+        {
+            m_PCL_data.at(i).buf_ref = new std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>(BUF_SIZE_CLOUDS);
+            m_PCL_data.at(i).mtx_ref = new std::mutex();
+            m_PCL_data.at(i).w_idx_ref = new size_t(0);
+            m_PCL_data.at(i).r_idx_ref = new size_t(0);
+        }
+
     }
 
     std::function<void (pcl::visualization::PCLVisualizer&)> viewer_callback = [](pcl::visualization::PCLVisualizer& viewer)
@@ -201,24 +217,29 @@ public:
         //        }
     }
 
-    std::mutex* getCloudsBufferMutex()
+    std::vector<shared_references_t> get_pcl_data_refs()
     {
-        return m_pcl_cvt_mtx;
+        return m_PCL_data;
     }
 
-    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>* getCloudsBufferRef()
-    {
-        return &m_clouds_buffer;
-    }
+//    std::mutex* getCloudsBufferMutex()
+//    {
+//        return m_pcl_cvt_mtx;
+//    }
+//    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>* getCloudsBufferRef()
+//    {
+//        return &m_clouds_buffer;
+//    }
+//    size_t& getCloudsWriteIndexRef()
+//    {
+//        return  m_clouds_write_idx;
+//    }
+//    size_t& getCloudsReadIndexRef()
+//    {
+//        return  m_clouds_read_idx;
+//    }
 
-    size_t& getCloudsWriteIndexRef()
-    {
-        return  m_clouds_write_idx;
-    }
-    size_t& getCloudsReadIndexRef()
-    {
-        return  m_clouds_read_idx;
-    }
+
 };
 
 #endif // PCLINTERFACE_H

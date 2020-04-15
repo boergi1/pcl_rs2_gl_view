@@ -81,8 +81,6 @@ size_t DeviceInterface::connectRealSenseDevices()
             //                                                  m_points_write_indexes[i] ));
         }
 
-        std::cout << "connectRealSenseDevices end" << std::endl;
-
     }
 
     return device_count;

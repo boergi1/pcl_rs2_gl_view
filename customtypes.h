@@ -44,7 +44,9 @@ typedef struct shared_references_s
 // helper functions
 int roundToInt(double val);
 
-bool areSame(double a, double b);
+bool areSameD(double a, double b);
+
+bool areSameF(float a, float b);
 
 
 

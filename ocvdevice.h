@@ -469,8 +469,8 @@ private:
                         // Error check if same point already exists
                         for (size_t j = 0; j < tracked_objects_size; j++)
                         {
-                            if ( (i != j) && areSame(tmp_obj.cx, m_tracked_objects->at(j).cx)
-                                 && areSame(tmp_obj.cy, m_tracked_objects->at(j).cy) )
+                            if ( (i != j) && areSameD(tmp_obj.cx, m_tracked_objects->at(j).cx)
+                                 && areSameD(tmp_obj.cy, m_tracked_objects->at(j).cy) )
                                 std::cerr << "ERROR Point match: obj idx "<< j << " #"
                                           << m_tracked_objects->at(j).unique_id << " ("
                                           << m_tracked_objects->at(j).cx << ","

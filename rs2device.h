@@ -91,18 +91,27 @@ public:
                 return;
             }
 
-
-            //            m_dec_filter.process(depth_tmp);
-            //            m_thr_filter.process(depth_tmp);
+            // Filters
+            //            m_dec_filter.process(depth_tmp); // reduce noise
+            //            m_thr_filter.process(depth_tmp); // threshold distances
             // m_spat_filter.process(depth_tmp);
-
-
-
 
             rs2::pointcloud rs2_pc_cpu;
             rs2_pc_cpu.map_to(depth_tmp);
             m_curr_rs2_points_cpu = rs2_pc_cpu.calculate(depth_tmp);
 
+            //            // DEBUG
+            //            auto v = m_curr_rs2_points_cpu.get_vertices();
+            //            auto debugsize = m_curr_rs2_points_cpu.size();
+            //            int invalid = 0;
+            //            for (size_t i=0; i<debugsize; i++)
+            //            {
+            //                if (areSameF(0.0f, v->z))
+            //                    invalid++;
+            //                v++;
+            //            }
+            //            std::cerr << "DEBUG INVALID: " << invalid << std::endl;
+            //            // !DEBUG
 
             m_ref_RS_to_interface.mtx_ref->lock();
             static_cast<rs2::points*>( m_ref_RS_to_interface.buf_ref )[ *m_ref_RS_to_interface.w_idx_ref ]

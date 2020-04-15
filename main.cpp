@@ -20,7 +20,7 @@ int main() try
     Rs2_PCL_Converter* rs2_pcl_conv;
 
     device_interface = new DeviceInterface;
-    size_t rs2_device_count = device_interface->connectRealSenseDevices();
+    size_t rs2_device_count = device_interface->connectRealSenseDevices(); // make sure that devices always have the same index (format.h)
     if (rs2_device_count > 0)
     {
         pcl_interface = new PclInterface(rs2_device_count);

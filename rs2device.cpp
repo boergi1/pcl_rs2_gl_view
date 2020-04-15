@@ -73,7 +73,9 @@ void Rs2Device::captureClient(bool running)
         std::cout << "Enabled streams:";
         for (auto p : pipe_profile.get_streams())
         {
-           auto vsp = p.as<rs2::video_stream_profile>();
+            auto sp = p.as<rs2::stream_profile>();
+
+            auto vsp = p.as<rs2::video_stream_profile>();
             std::cout << " " << vsp.stream_name() << " resolution: " << vsp.width() << "x" << vsp.height() << " fps: " << vsp.fps() << " format: " << vsp.format();
         }
 
@@ -140,19 +142,20 @@ void Rs2Device::captureClient(bool running)
 
 }
 
-Rs2Device::Rs2Device(rs2::device &dev, std::mutex* mutex, rs2::points *buffer, size_t& write_idx_ref)
+Rs2Device::Rs2Device(rs2::device &dev, shared_references_t data_ref)
 {
-    // std::map <size_t, size_t> hi;
-    //  m_parent_ref = parent_ref;
-    m_mutex_ref = mutex;
-    //  start_flag = t_start_flag;
+    m_ref_RS_to_interface = data_ref;
+
+
+    //  m_mutex_ref = mutex;
+
 
     m_rs2_dev = dev;
     //m_rs2_pipe_ptr = pipe;
     m_name = get_device_name(m_rs2_dev);
-    m_rs2_points_buf_ref = buffer; //new rs2::points[POINT_BUF_SIZE];
-    m_points_write_idx_ref = &write_idx_ref;
-    * m_points_write_idx_ref = 0;
+    // m_rs2_points_buf_ref = buffer; //new rs2::points[POINT_BUF_SIZE];
+    //  m_points_write_idx_ref = &write_idx_ref;
+    //  * m_points_write_idx_ref = 0;
     // m_rs2_sensors = dev.query_sensors();
     m_use_polling = false;
     m_use_gpu_capture = false;
@@ -160,7 +163,7 @@ Rs2Device::Rs2Device(rs2::device &dev, std::mutex* mutex, rs2::points *buffer, s
     m_serial_num = get_device_id(m_rs2_dev);
 
     std::cout << "New Realsense device instance: " << m_name << " id: " << m_serial_num
-              << " buffer: " << m_rs2_points_buf_ref << " mutex: " << m_mutex_ref << std::endl;
+              << " buffer: " << m_ref_RS_to_interface.buf_ref << " mutex: " << m_ref_RS_to_interface.mtx_ref << std::endl;
 
 
     //    std::cout << "Sensors:" << std::endl;

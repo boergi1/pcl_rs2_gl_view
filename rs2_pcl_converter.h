@@ -20,7 +20,12 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/console/parse.h>
 
+#include <pcl/point_types.h>
+
+#include <pcl/common/transforms.h>
+
 #include "format.h"
+#include "customtypes.h"
 #include "deviceinterface.h"
 #include "pclinterface.h"
 
@@ -33,10 +38,10 @@ private:
     shared_references_t m_PCL_ref;
 
 
-    std::mutex* m_points_mutex_ref;
-    rs2::points* m_points_buf_ref;
-    size_t* m_points_write_idx_ref;
-    size_t* m_points_read_idx_ref;
+    //    std::mutex* m_points_mutex_ref;
+    //    rs2::points* m_points_buf_ref;
+    //    size_t* m_points_write_idx_ref;
+    //    size_t* m_points_read_idx_ref;
 
     std::mutex* m_clouds_mutex_ref = new std::mutex();
     std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>* m_clouds_buf_ref;
@@ -58,176 +63,265 @@ private:
     void converter_thread_func()
     {
         std::cout << "Converter thread started # " << std::this_thread::get_id() << std::endl;
-        pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud(new pcl::PointCloud<pcl::PointXYZ>(FRAME_WIDTH_RS*FRAME_HEIGHT_RS*m_rs2_device_count,1));
-        //        converted_cloud->resize(converted_cloud->height*converted_cloud->width);
+
+        //        pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud(new pcl::PointCloud<pcl::PointXYZ>
+        //                                                        (FRAME_POINTS_COUNT_RS*m_rs2_device_count,1));
+        //        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>
+        //                                                   (FRAME_POINTS_COUNT_RS,1));
 
         while (m_running) {
+#if (VERBOSE > 1)
+            auto start = std::chrono::steady_clock::now();
+#endif
+            std::cout << "DEBUG DEVICES " << m_refs_conv_to_RS.size() << std::endl;
+            //            point_cloud->clear();
+            //            point_cloud->resize(FRAME_POINTS_COUNT_RS*m_rs2_device_count);
+            pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+            bool wait = true;
+
+            for (size_t i=0; i < m_refs_conv_to_RS.size(); i++) {
+                if ( *m_refs_conv_to_RS.at(i).r_idx_ref != *m_refs_conv_to_RS.at(i).w_idx_ref )
+                {
+                    wait = false;
+                    //                    tmp_pc->clear();
+                    //                    tmp_pc->resize(FRAME_POINTS_COUNT_RS);
+                    pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>
+                                                               (FRAME_POINTS_COUNT_RS,1));
 
 
-            if (*m_points_read_idx_ref != *m_points_write_idx_ref)
-            {
-                // Read from rs2::points buffer
-                m_points_mutex_ref->lock();
-                rs2::points points = m_points_buf_ref[ *m_points_read_idx_ref ];
-                *m_points_read_idx_ref = *m_points_read_idx_ref + 1;
-                if (*m_points_read_idx_ref == BUF_SIZE_POINTS-1)
-                    *m_points_read_idx_ref = 0;
-                cout << "(Converter) Increased read index: " << *m_points_read_idx_ref << " size " << points.size() << endl;
-                m_points_mutex_ref->unlock();
+                    m_refs_conv_to_RS.at(i).mtx_ref->lock();
+                    rs2::points points = static_cast<rs2::points*>( m_refs_conv_to_RS.at(i).buf_ref )
+                            [ *m_refs_conv_to_RS.at(i).r_idx_ref ];
 
-                // Convert to pcl::PointCloud cloud
-                // pcl::PointCloud<pcl::PointXYZ>::Ptr converted_cloud = points_to_pcl(points);
-                points_to_pcl(points, point_cloud);
+                    *m_refs_conv_to_RS.at(i).r_idx_ref = *m_refs_conv_to_RS.at(i).r_idx_ref + 1;
+                    if (*m_refs_conv_to_RS.at(i).r_idx_ref == BUF_SIZE_POINTS-1)
+                        *m_refs_conv_to_RS.at(i).r_idx_ref = 0;
+                    std::cout << "(Converter) Increased read index (device " << i << "): " << *m_refs_conv_to_RS.at(i).r_idx_ref
+                              << " size " << points.size() << std::endl;
+                    m_refs_conv_to_RS.at(i).mtx_ref->unlock();
+
+                    points_to_pcl(points, tmp_pc, i+1);
 
 
-                // Write to pcl::PointCloud buffer
-                m_clouds_mutex_ref->lock();
-                m_clouds_buf_ref->at(*m_clouds_write_idx_ref) = point_cloud; // m_current_cloud->makeShared()
-                auto cloud_size =  m_clouds_buf_ref->at(*m_clouds_write_idx_ref)->size();
-                *m_clouds_write_idx_ref = *m_clouds_write_idx_ref + 1;
-                if (*m_clouds_write_idx_ref == BUF_SIZE_POINTS-1)
-                    *m_clouds_write_idx_ref = 0;
-                cout << "(Converter) Increased write index: " << *m_clouds_write_idx_ref << " size " << cloud_size << endl;
-                m_clouds_mutex_ref->unlock();
+                    *point_cloud += *tmp_pc;
+
+
+                }
 
             }
-            else {
+
+
+
+
+            if (wait)
                 std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_CONV));
+            else
+            {
+#if (VERBOSE > 1)
+                std::cout << "(Converter) Thread took " << std::chrono::duration_cast<std::chrono::milliseconds>
+                             (std::chrono::steady_clock::now()-start).count() << " ms, total PC size: " << point_cloud->points.size() << std::endl;
+#endif
             }
 
-            //  *m_points_write_idx_ref = *m_points_write_idx_ref+1;
 
-
-
-            //            if (point_read_index != point_write_index)
+            //            if (*m_points_read_idx_ref != *m_points_write_idx_ref)
             //            {
-            //                // Mutex for acquisition thread - read
-            //                pthread_mutex_lock( &rs2points_buf_mtx );
-            //                rs2::points points = rs2_points_buf[point_read_index++];
-            //                cout << "(Converter) Increased read index: " << point_read_index << " size " << points.size() << endl;
-            //                if (point_read_index == POINT_BUF_SIZE-1)
-            //                    point_read_index = 0;
-            //                pthread_mutex_unlock( &rs2points_buf_mtx );
-            //                // Convert to pcl cloud
-            //                pcl::PointCloud<pcl::PointXYZ>::Ptr converted_cloud = points_to_pcl(points);
-            //                //            if (cloud_write_index != cloud_read_index)
-            //                //            {
-            //                // Mutex for processing thread - write
-            //                pthread_mutex_lock( &pclclouds_buf_mtx );
-            //                pcl_clouds_buf[cloud_write_index++] = converted_cloud;
-            //                cout << "(Converter) Increased write index: " << cloud_write_index << " size " << converted_cloud->size() << endl;
-            //                if (cloud_write_index == POINT_BUF_SIZE-1)
-            //                    cloud_write_index = 0;
-            //                pthread_mutex_unlock( &pclclouds_buf_mtx );
-            //                //   }
-            //                //            else {
-            //                //                cout << "Skipped writing to cloud buffer, writeIndex " << cloud_write_index << " readIndex " << cloud_read_index << endl;
-            //                //            }
+            //                // Read from rs2::points buffer
+            //                m_points_mutex_ref->lock();
+            //                rs2::points points = m_points_buf_ref[ *m_points_read_idx_ref ];
+            //                *m_points_read_idx_ref = *m_points_read_idx_ref + 1;
+            //                if (*m_points_read_idx_ref == BUF_SIZE_POINTS-1)
+            //                    *m_points_read_idx_ref = 0;
+            //                cout << "(Converter) Increased read index: " << *m_points_read_idx_ref << " size " << points.size() << endl;
+            //                m_points_mutex_ref->unlock();
+
+            //                // Convert to pcl::PointCloud cloud
+            //                // pcl::PointCloud<pcl::PointXYZ>::Ptr converted_cloud = points_to_pcl(points);
+            //                points_to_pcl(points, point_cloud);
+
+
+            //                // Write to pcl::PointCloud buffer
+            //                m_clouds_mutex_ref->lock();
+            //                m_clouds_buf_ref->at(*m_clouds_write_idx_ref) = point_cloud; // m_current_cloud->makeShared()
+            //                auto cloud_size =  m_clouds_buf_ref->at(*m_clouds_write_idx_ref)->size();
+            //                *m_clouds_write_idx_ref = *m_clouds_write_idx_ref + 1;
+            //                if (*m_clouds_write_idx_ref == BUF_SIZE_POINTS-1)
+            //                    *m_clouds_write_idx_ref = 0;
+            //                cout << "(Converter) Increased write index: " << *m_clouds_write_idx_ref << " size " << cloud_size << endl;
+            //                m_clouds_mutex_ref->unlock();
+
             //            }
             //            else {
-            //                cout << "Skipped reading from point buffer, writeIndex " << point_write_index << " readIndex " << point_read_index << endl;
-            //                //  cout << "Skipped writing to cloud buffer, writeIndex " << cloud_write_index << " readIndex " << cloud_read_index << endl;
-            //                std::this_thread::sleep_for(std::chrono::duration<double, std::milli> (CONV_DELAY));
+            //                std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_CONV));
             //            }
 
 
 
 
-
         }
+
+
     }
 
-    void points_vec_to_pcl(std::vector<rs2::points> *pointsvec, pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud)
+    inline void rs2_transform_point_to_point_custom(float* to_point[3], const struct rs2_extrinsics* extrin, const float* from_point[3])
     {
-#if (VERBOSE > 1)
-        auto start = std::chrono::steady_clock::now();
+        *to_point[0] = extrin->rotation[0] * *from_point[0] + extrin->rotation[3] * *from_point[1] + extrin->rotation[6] * *from_point[2] + extrin->translation[0];
+        *to_point[1] = extrin->rotation[1] * *from_point[0] + extrin->rotation[4] * *from_point[1] + extrin->rotation[7] * *from_point[2] + extrin->translation[1];
+        *to_point[2] = extrin->rotation[2] * *from_point[0] + extrin->rotation[5] * *from_point[1] + extrin->rotation[8] * *from_point[2] + extrin->translation[2];
+    }
+
+    void points_to_pcl(const rs2::points& points, pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud, size_t dev_idx)
+    {
+#if (VERBOSE > 2)
+        auto start = std::chrono::high_resolution_clock::now();
 #endif
-        for (size_t i = 0;i < pointsvec->size();i++) {
-            auto Vertex = pointsvec->at(i).get_vertices();
-            for (auto& p : pcloud->points)
+        auto rs_vertex = points.get_vertices();
+
+        std::cout << "(Converter) DEBUG rs2::points::get_vertices() took: " << std::chrono::duration_cast
+                     <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
+
+
+
+        //  degreesToRadians(ROT_RS1_TO_RS0_X_ANG)
+
+        cv::Mat M;
+
+        switch (dev_idx) {
+        case 0: // no transformation
+            for (auto& pcl_point : pcloud->points)
             {
-                p.x = Vertex->x;
-                p.y = Vertex->y;
-                p.z = Vertex->z;
-                Vertex++;
+                pcl_point.x = rs_vertex->x;
+                pcl_point.y = rs_vertex->y;
+                pcl_point.z = rs_vertex->z;
+                rs_vertex++;
             }
-        }
-
-
-#if (VERBOSE > 1)
-        std::cout << "Converted " << pcloud->points.size() << " elements, took " << std::chrono::duration_cast
-                     <std::chrono::milliseconds>(std::chrono::steady_clock::now()-start).count() << " ms" << std::endl;
-#endif
-    }
-
-    void points_to_pcl(const rs2::points& points, pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud)
-    {
-#if (VERBOSE > 1)
-        auto start = std::chrono::steady_clock::now();
-#endif
-        auto Vertex = points.get_vertices();
-#if (VERBOSE > 1)
-        std::cout << "rs2::points::get_vertices() took: " << std::chrono::duration_cast
-                     <std::chrono::milliseconds>(std::chrono::steady_clock::now()-start).count() << " ms" << std::endl;
-#endif
-        for (auto& p : pcloud->points)
+            break;
+        case 1:
         {
-            p.x = Vertex->x;
-            p.y = Vertex->y;
-            p.z = Vertex->z;
-            Vertex++;
+            //  double rad = degreesToRadians(ROT_RS1_TO_RS0_X_ANG);
+            //            M = (cv::Mat_<double>(3,4) <<
+            //                 1,       0,              0,       TRAN_RS1_TO_RS0_X_MM,
+            //                 0, std::cos(rad), -std::sin(rad), TRAN_RS1_TO_RS0_Y_MM,
+            //                 0, std::sin(rad),  std::cos(rad), TRAN_RS1_TO_RS0_Z_MM);
+            //            M = (cv::Mat_<double>(4,4) <<
+            //                 1,       0,              0,       TRAN_RS1_TO_RS0_X_MM,
+            //                 0, std::cos(rad), -std::sin(rad), TRAN_RS1_TO_RS0_Y_MM,
+            //                 0, std::sin(rad),  std::cos(rad), TRAN_RS1_TO_RS0_Z_MM,
+            //                 0,0,0,1);
+            //            std::cout << "DEBUG trans matrix: " << M << std::endl;
+
+            float rad = static_cast<float>(degreesToRadians(ROT_RS1_TO_RS0_X_ANG));
+            // auto rad = degreesToRadians(ROT_RS1_TO_RS0_X_ANG);
+            rs2_extrinsics extrinsics_T_Rx;
+            extrinsics_T_Rx.rotation[0] = 1; extrinsics_T_Rx.rotation[3] = 0;             extrinsics_T_Rx.rotation[6] = 0;
+            extrinsics_T_Rx.rotation[1] = 0; extrinsics_T_Rx.rotation[4] = std::cos(rad); extrinsics_T_Rx.rotation[7] = -std::sin(rad);
+            extrinsics_T_Rx.rotation[2] = 0; extrinsics_T_Rx.rotation[5] = std::sin(rad); extrinsics_T_Rx.rotation[8] = std::cos(rad);
+
+            extrinsics_T_Rx.translation[0] = static_cast<float>(TRAN_RS1_TO_RS0_X_M);
+            extrinsics_T_Rx.translation[1] = static_cast<float>(TRAN_RS1_TO_RS0_Y_M);
+            extrinsics_T_Rx.translation[2] = static_cast<float>(TRAN_RS1_TO_RS0_Z_M);
+
+            for (auto& pcl_point : pcloud->points)
+            {
+
+                //                cv::Mat p_o = (cv::Mat_<double>(4,1) << rs_vertex->x, rs_vertex->y, rs_vertex->z, 1);
+                //                cv::Mat p_n = M * p_o;
+
+                float origin[3] { rs_vertex->x, rs_vertex->y, rs_vertex->z };
+                float target[3];
+                rs2_transform_point_to_point(target, &extrinsics_T_Rx, origin);
+
+                pcl_point.x = target[0];
+                pcl_point.y = target[1];
+                pcl_point.z = target[2];
+                rs_vertex++;
+#if (VERBOSE > 6)
+                std::cerr << "Point before: (" << origin[0] << "," << origin[1] << "," << origin[2] << ")\t" <<
+                             "Point after: (" << target[0] << "," << target[1] << "," << target[2] << ")" << std::endl;
+#endif
+                //                pcl_point.x = p_n.at<float>(0);
+                //                pcl_point.y = p_n.at<float>(1);
+                //                pcl_point.z = p_n.at<float>(2);
+                //                rs_vertex++;
+            }
+            break;
         }
-#if (VERBOSE > 1)
-        std::cout << "Converted " << pcloud->points.size() << " elements, took " << std::chrono::duration_cast
-                     <std::chrono::milliseconds>(std::chrono::steady_clock::now()-start).count() << " ms" << std::endl;
+        case 2:
+        {
+            float rad = static_cast<float>(degreesToRadians(ROT_RS2_TO_RS0_X_ANG));
+
+            rs2_extrinsics extrinsics_T_Rx;
+            extrinsics_T_Rx.rotation[0] = 1; extrinsics_T_Rx.rotation[3] = 0;             extrinsics_T_Rx.rotation[6] = 0;
+            extrinsics_T_Rx.rotation[1] = 0; extrinsics_T_Rx.rotation[4] = std::cos(rad); extrinsics_T_Rx.rotation[7] = -std::sin(rad);
+            extrinsics_T_Rx.rotation[2] = 0; extrinsics_T_Rx.rotation[5] = std::sin(rad); extrinsics_T_Rx.rotation[8] = std::cos(rad);
+
+            extrinsics_T_Rx.translation[0] = static_cast<float>(TRAN_RS2_TO_RS0_X_M);
+            extrinsics_T_Rx.translation[1] = static_cast<float>(TRAN_RS2_TO_RS0_Y_M);
+            extrinsics_T_Rx.translation[2] = static_cast<float>(TRAN_RS2_TO_RS0_Z_M);
+
+            for (auto& pcl_point : pcloud->points)
+            {
+                if (areSame(0.0, static_cast<double>(rs_vertex->z)))
+                {
+                    std::cerr << "Skipping point: (" << rs_vertex->x << "," << rs_vertex->y << "," << rs_vertex->z << ")" << std::endl;
+                    continue;
+                }
+                float origin[3] { rs_vertex->x, rs_vertex->y, rs_vertex->z };
+                float target[3];
+                rs2_transform_point_to_point(target, &extrinsics_T_Rx, origin);
+
+                pcl_point.x = target[0];
+                pcl_point.y = target[1];
+                pcl_point.z = target[2];
+                rs_vertex++;
+            }
+            break;
+        }
+        default:
+            std::cerr << "(Converter) Error: invalid device index" << std::endl;
+        }
+
+
+
+
+        //        Eigen::Affine3f transform = Eigen::Affine3f::Identity(); // T in meters, R in rad
+        //        switch (dev_idx) {
+        //        case 0: // no transformation
+        //            break;
+        //        case 1:
+        //        {
+        //            transform.translation() << static_cast<float>( TRAN_RS1_TO_RS0_X_MM/1000 ),
+        //                    static_cast<float>( TRAN_RS1_TO_RS0_Y_MM/1000 ),
+        //                    static_cast<float>( TRAN_RS1_TO_RS0_Z_MM/1000 );
+        //            transform.rotate (Eigen::AngleAxisf (static_cast<float>( degreesToRadians(ROT_RS1_TO_RS0_X_ANG) ),
+        //                                                 Eigen::Vector3f::UnitX()));
+        //            pcl::transformPointCloud (*pcloud, *pcloud, transform);
+        //            break;
+        //        }
+        //        case 2:
+        //        {
+        //            transform.translation() << static_cast<float>( TRAN_RS2_TO_RS0_X_MM/1000 ),
+        //                    static_cast<float>( TRAN_RS2_TO_RS0_Y_MM/1000 ),
+        //                    static_cast<float>( TRAN_RS2_TO_RS0_Z_MM/1000 );
+        //            transform.rotate (Eigen::AngleAxisf (static_cast<float>( degreesToRadians(ROT_RS2_TO_RS0_X_ANG) ),
+        //                                                 Eigen::Vector3f::UnitX()));
+        //            pcl::transformPointCloud (*pcloud, *pcloud, transform);
+        //            break;
+        //        }
+        //        default:
+        //            std::cerr << "(Converter) Error: invalid device index" << std::endl;
+        //        }
+
+
+
+#if (VERBOSE > 2)
+        std::cout << "(Converter) RS device " << dev_idx << " converted " << pcloud->points.size() << " elements, took " << std::chrono::duration_cast
+                     <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
 #endif
     }
 
 
-    //    pcl::PointCloud<pcl::PointXYZ>::Ptr points_to_pcl(const rs2::points& points)
-    //    {
-    //        auto start = std::chrono::steady_clock::now();
-    //        //  auto sp = points.get_profile().as<rs2::video_stream_profile>();
-    //        auto Vertex = points.get_vertices();
-    //        cout << "points.get_vertices() took: " << std::chrono::duration_cast
-    //                <std::chrono::milliseconds>(std::chrono::steady_clock::now()-start).count() << " ms" << endl;
-    //        //        pcl::PointCloud<pcl::PointXYZ>::Ptr current_cloud(new pcl::PointCloud<pcl::PointXYZ>(1280,720));
-    //        //        current_cloud->resize(1280*720);
-    //        // m_current_cloud->resize(1280*720);
-    //        //   pcl::PointCloud<pcl::PointXYZ>::Ptr current_cloud(new pcl::PointCloud<pcl::PointXYZ>(frame_width, frame_height));
-    //        //    std::vector<float> x_vec, y_vec, z_vec;
-    //        for (auto& p : m_current_cloud->points)
-    //        {
-    //            p.x = Vertex->x;
-    //            p.y = Vertex->y;
-    //            p.z = Vertex->z;
-    //            //        x_vec.push_back(Vertex->x);
-    //            //        y_vec.push_back(Vertex->y);
-    //            //        z_vec.push_back(Vertex->z);
-    //            Vertex++;
-    //        }
-    //        cout << "Converted " << m_current_cloud->points.size() << " elements, took " << std::chrono::duration_cast
-    //                <std::chrono::milliseconds>(std::chrono::steady_clock::now()-start).count() << " ms" << endl;
-    //        //    for (int i=0;i<cloud_size;i++) {
-    //        //        //
-    //        //        x_vec.push_back(current_cloud->points[i].x);
-    //        //        y_vec.push_back(current_cloud->points[i].y);
-    //        //        z_vec.push_back(current_cloud->points[i].z);
-    //        //        // float max = *max_element(x_vec.begin(), x_vec.end());
-    //        //        // cout << i << " - X: "<< x_vec[i] << " Y: "<< y_vec[i] << " Z: "<< z_vec[i] << endl;
-    //        //    }
-    //        // cout << " - X: "<< x_vec[cloud_size/2] << " Y: "<< y_vec[cloud_size/2] << " Z: "<< z_vec[cloud_size/2] << endl;
-    //        //    cout << "X_max: " << *max_element(x_vec.begin(), x_vec.end()) << " X_min: " << *min_element(x_vec.begin(), x_vec.end())
-    //        //         << " Y_max: " << *max_element(y_vec.begin(), y_vec.end()) << " Y_min: " << *min_element(y_vec.begin(), y_vec.end())
-    //        //         << " Z_max: " << *max_element(z_vec.begin(), z_vec.end()) << " Z_min: " << *min_element(z_vec.begin(), z_vec.end()) << endl;
-    //        // current_cloud->points[i].x
-    //        //    pcl::PassThrough<pcl::PointXYZ> pass;
-    //        //    pass.setInputCloud(current_cloud);
-    //        //    pass.setFilterFieldName("z");
-    //        //    pass.setFilterLimits(0.0, 1.0);
-    //        //    pass.filter(*cloud_filtered);
-    //        return m_current_cloud;
-    //    }
 
 public:
     Rs2_PCL_Converter(DeviceInterface* in_interface_ref, PclInterface* out_interface_ref , uint32_t device_count)
@@ -240,25 +334,27 @@ public:
         //  m_current_cloud->resize(FRAME_WIDTH*FRAME_HEIGHT);
         // need multiple device refs here // std::vector<rs2::points*>
 
-        m_refs_conv_to_RS.resize(device_count);
-        for (uint i = 0;i < device_count; i++) {
-            // use this struct already inside DeviceInterface !!
-            m_refs_conv_to_RS.at(i).mtx_ref = in_interface_ref->getPointsBufferMutex(i);
-            m_refs_conv_to_RS.at(i).buf_ref = in_interface_ref->getPointsBufferRef(i);
-            m_refs_conv_to_RS.at(i).w_idx_ref = &in_interface_ref->getPointsWriteIndexRef(i);
-            m_refs_conv_to_RS.at(i).r_idx_ref = &in_interface_ref->getPointsReadIndexRef(i);
+        m_refs_conv_to_RS = in_interface_ref->get_rs_data_refs();
 
-//            rs2::points test = *((rs2::points *) m_refs_conv_to_RS.at(i).buf_ref);
-//            std::cout << "DID IT WORK? " <<  test.get_data_size()<<std::endl;
+        //        m_refs_conv_to_RS.resize(device_count);
+        //        for (uint i = 0;i < device_count; i++) {
+        //            // use this struct already inside DeviceInterface !!
+        //            m_refs_conv_to_RS.at(i).mtx_ref = in_interface_ref->getPointsBufferMutex(i);
+        //            m_refs_conv_to_RS.at(i).buf_ref = in_interface_ref->getPointsBufferRef(i);
+        //            m_refs_conv_to_RS.at(i).w_idx_ref = &in_interface_ref->getPointsWriteIndexRef(i);
+        //            m_refs_conv_to_RS.at(i).r_idx_ref = &in_interface_ref->getPointsReadIndexRef(i);
 
-            //    rs2::points *test = m_RS_refs.at(i).buf_ref;
+        ////            rs2::points test = *((rs2::points *) m_refs_conv_to_RS.at(i).buf_ref);
+        ////            std::cout << "DID IT WORK? " <<  test.get_data_size()<<std::endl;
 
-        }
+        //            //    rs2::points *test = m_RS_refs.at(i).buf_ref;
 
-        m_points_mutex_ref = in_interface_ref->getPointsBufferMutex(0);
-        m_points_buf_ref = in_interface_ref->getPointsBufferRef(0);
-        m_points_write_idx_ref = &in_interface_ref->getPointsWriteIndexRef(0);
-        m_points_read_idx_ref = &in_interface_ref->getPointsReadIndexRef(0);
+        //        }
+
+        //        m_points_mutex_ref = in_interface_ref->getPointsBufferMutex(0);
+        //        m_points_buf_ref = in_interface_ref->getPointsBufferRef(0);
+        //        m_points_write_idx_ref = &in_interface_ref->getPointsWriteIndexRef(0);
+        //        m_points_read_idx_ref = &in_interface_ref->getPointsReadIndexRef(0);
 
         m_clouds_mutex_ref = out_interface_ref->getCloudsBufferMutex();
         m_clouds_buf_ref = out_interface_ref->getCloudsBufferRef();
@@ -271,6 +367,100 @@ public:
         //  m_clouds_buffer.push_back( m_current_cloud->makeShared() );
 
     }
+
+
+    //    void points_vec_to_pcl(std::vector<const rs2::points&> pointsvec, pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud)
+    //    {
+    //#if (VERBOSE > 1)
+    //        auto start = std::chrono::steady_clock::now();
+    //#endif
+    //        size_t pt_vec_size = pointsvec.size();
+    //        for (size_t i = 0; i < pt_vec_size; i++) {
+    //            pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>
+    //                                                       (FRAME_POINTS_COUNT_RS,1));
+    //            const rs2::points& points = pointsvec.at(i);
+    //            auto rs_vertex = points.get_vertices();
+    //            for (auto& pcl_point : tmp_pc->points)
+    //            {
+    //                pcl_point.x = rs_vertex->x;
+    //                pcl_point.y = rs_vertex->y;
+    //                pcl_point.z = rs_vertex->z;
+    //                rs_vertex++;
+    //            }
+
+    //            Eigen::Affine3f transform = Eigen::Affine3f::Identity(); // T in meters, R in rad
+    //            switch (i) {
+    //            case 0:
+    //            {
+    //                // No transformation
+    //                break;
+    //            }
+    //            case 1:
+    //            {
+    //                transform.translation() << static_cast<float>( TRAN_RS1_TO_RS0_X_MM/1000 ),
+    //                        static_cast<float>( TRAN_RS1_TO_RS0_Y_MM/1000 ),
+    //                        static_cast<float>( TRAN_RS1_TO_RS0_Z_MM/1000 );
+    //                transform.rotate (Eigen::AngleAxisf (static_cast<float>( degreesToRadians(ROT_RS1_TO_RS0_X_ANG) ),
+    //                                                     Eigen::Vector3f::UnitX()));
+    //                pcl::transformPointCloud (*tmp_pc, *tmp_pc, transform);
+    //                break;
+    //            }
+    //            case 2:
+    //            {
+    //                transform.translation() << static_cast<float>( TRAN_RS2_TO_RS0_X_MM/1000 ),
+    //                        static_cast<float>( TRAN_RS2_TO_RS0_Y_MM/1000 ),
+    //                        static_cast<float>( TRAN_RS2_TO_RS0_Z_MM/1000 );
+    //                transform.rotate (Eigen::AngleAxisf (static_cast<float>( degreesToRadians(ROT_RS2_TO_RS0_X_ANG) ),
+    //                                                     Eigen::Vector3f::UnitX()));
+    //                pcl::transformPointCloud (*tmp_pc, *tmp_pc, transform);
+    //                break;
+    //            }
+    //            default:
+    //                std::cerr << "(Converter) Invalid device index" << std::endl;
+    //            }
+    //#if (VERBOSE > 1)
+    //                std::cout << "(Converter) Tranformation matrix for device " << i
+    //                          << std::endl << transform.matrix();
+    //#endif
+    //            *pcloud += *tmp_pc;
+    //        }
+    //        // old try ....
+    //        //        std::vector<const rs2::vertex*> vertices;
+    //        //        vertices.resize(pointsvec->size());
+    //        //        for (size_t i = 0;i < pointsvec->size();i++) {
+    //        //            auto Vertex = pointsvec->at(i).get_vertices();
+    //        //            vertices.push_back(Vertex);
+    //        //        }
+    //        //        for (size_t i=0; i<pcloud->points.size(); i++)
+    //        //        {
+    //        //            auto pclpoint = pcloud->points.at(i);
+    //        //            // auto test = pcloud->at(i);
+    //        //            if (i < FRAME_POINTS_COUNT)
+    //        //            {
+    //        //                pclpoint.x = vertices.at(0)->x;
+    //        //                pclpoint.y = vertices.at(0)->y;
+    //        //                pclpoint.z = vertices.at(0)->z;
+    //        //            }
+    //        //            else if (i >= FRAME_POINTS_COUNT && i < FRAME_POINTS_COUNT*2)
+    //        //            {
+    //        //                pclpoint.x = vertices.at(1)->x;
+    //        //                pclpoint.y = vertices.at(1)->y;
+    //        //                pclpoint.z = vertices.at(1)->z;
+    //        //            }
+    //        //            else if (i >= FRAME_POINTS_COUNT*2)
+    //        //            {
+    //        //                pclpoint.x = vertices.at(2)->x;
+    //        //                pclpoint.y = vertices.at(2)->y;
+    //        //                pclpoint.z = vertices.at(2)->z;
+    //        //            }
+    //        //        }
+    //#if (VERBOSE > 1)
+    //        std::cout << "(Converter) Converted " << pcloud->points.size() << " elements, took " << std::chrono::duration_cast
+    //                     <std::chrono::milliseconds>(std::chrono::steady_clock::now()-start).count() << " ms" << std::endl;
+    //#endif
+    //    }
+
+
     void startThread()
     {
         if (m_rs2_device_count == 1)

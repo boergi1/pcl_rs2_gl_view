@@ -30,7 +30,7 @@ int main() try
     }
     else std::cout << "No Realsense device found" << std::endl;
 
-   // device_interface->connectVideoDevice(2);
+   device_interface->connectVideoDevice(2);
 
 
     while (true) {

@@ -89,16 +89,21 @@ private:
         m_capture->set(cv::CAP_PROP_FRAME_WIDTH, FRAME_WIDTH_CV);
         m_capture->set(cv::CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT_CV);
         m_capture->set(cv::CAP_PROP_FPS, FRAME_RATE_CV);
-        std::cout << "Capturing with resolution " << m_capture->get(cv::CAP_PROP_FRAME_WIDTH) << " x "
-                  << m_capture->get(cv::CAP_PROP_FRAME_HEIGHT) << " at " << m_capture->get(cv::CAP_PROP_FPS) << " fps" << std::endl;
 
         if (m_capture->isOpened())
         {
+            std::cout << "(OpenCV capture) Capturing with resolution " << m_capture->get(cv::CAP_PROP_FRAME_WIDTH) << " x "
+                      << m_capture->get(cv::CAP_PROP_FRAME_HEIGHT) << " at " << m_capture->get(cv::CAP_PROP_FPS) << " fps" << std::endl;
             m_segmentation_thread = std::thread(&OcvDevice::segmentation_thread_func, this);
             m_tracking_thread = std::thread(&OcvDevice::tracking_thread_func, this);
 #if (IMSHOW > 0 && VERBOSE > 0)
             m_imshow_thread = std::thread(&OcvDevice::imshow_thread_func, this);
 #endif
+        }
+        else
+        {
+            std::cerr << "(OpenCV capture) Could not open device #" << m_cam_idx << std::endl;
+            return;
         }
         while( m_capture->isOpened() )
         {
@@ -144,7 +149,7 @@ private:
                          (std::chrono::steady_clock::now()-start_time_cap).count() << " ms" << std::endl;
 #endif
         }
-        std::cout << "Capture thread is exiting" << std::endl;
+        std::cout << "(OpenCV capture) Thread is exiting" << std::endl;
     }
 
     void segmentation_thread_func()

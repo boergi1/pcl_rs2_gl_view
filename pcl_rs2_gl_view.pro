@@ -13,14 +13,14 @@ SOURCES += \
         rs2device.cpp
 
 HEADERS += \
-    b.h \
     customtypes.h \
     deviceinterface.h \
     format.h \
     ocvdevice.h \
     pclinterface.h \
     rs2_pcl_converter.h \
-    rs2device.h
+    rs2device.h \
+    threadcontroller.h
 
 CONFIG += UBU18 # UBU16
 

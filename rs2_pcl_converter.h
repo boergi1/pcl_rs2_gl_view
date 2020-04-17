@@ -164,7 +164,7 @@ private:
 
 #if (VERBOSE > 1)
             std::cout << "(Converter) Thread took " << std::chrono::duration_cast<std::chrono::milliseconds>
-                         (std::chrono::steady_clock::now()-start).count() << " ms, total PC size: " << point_cloud->points.size() << std::endl;
+                         (std::chrono::steady_clock::now()-start).count() << " ms, total PC size: " << tmp_pc->points.size() << std::endl;
 #endif
 
 

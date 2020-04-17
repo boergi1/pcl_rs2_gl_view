@@ -65,7 +65,6 @@ private:
         {
             if (m_clouds_read_idx != m_clouds_write_idx)
             {
-                std::cout << "debug loop" << std::endl;
                 // Read from pcl::PointCloud buffer
                 m_pcl_cvt_mtx->lock();
                 m_proc_cloud = m_clouds_buffer.at(m_clouds_read_idx++);

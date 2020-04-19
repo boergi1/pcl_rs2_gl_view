@@ -31,6 +31,7 @@
             rotation and translation will change later
 */
 // RS0 central
+#define RS0_CENTRAL_SERIAL "#950122060662"
 #define TRAN_RS0_TO_CV0_X_M 3.0
 #define TRAN_RS0_TO_CV0_Y_M 0.0
 #define TRAN_RS0_TO_CV0_Z_M 0.1
@@ -38,6 +39,7 @@
 //#define ROT_RS0_TO_CV0_Y_ANG 0.0
 //#define ROT_RS0_TO_CV0_Z_ANG 0.0
 // RS1 front
+#define RS1_FRONT_SERIAL "#950122060486"
 #define TRAN_RS1_TO_RS0_X_M 0.0
 #define TRAN_RS1_TO_RS0_Y_M -0.020
 #define TRAN_RS1_TO_RS0_Z_M -0.010
@@ -45,6 +47,7 @@
 //#define ROT_RS1_TO_RS0_Y_ANG 0.0
 //#define ROT_RS1_TO_RS0_Z_ANG 0.0
 // RS2 rear
+#define RS2_REAR_SERIAL "#950122061070"
 #define TRAN_RS2_TO_RS0_X_M 0.0
 #define TRAN_RS2_TO_RS0_Y_M 0.020
 #define TRAN_RS2_TO_RS0_Z_M -0.010

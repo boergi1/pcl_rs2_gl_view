@@ -53,7 +53,7 @@ private:
     bool m_use_gpu_capture = false;
 
     std::string get_device_name(const rs2::device& dev);
-    std::string get_device_id(const rs2::device &dev);
+//    std::string getRs2DeviceSerialNum(const rs2::device &dev);
 
     std::string get_sensor_name(const rs2::sensor& sensor);
 

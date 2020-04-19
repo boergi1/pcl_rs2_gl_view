@@ -11,64 +11,57 @@ DeviceInterface::DeviceInterface()
     //  connectRealSenseDevices();
 }
 
+
+
 size_t DeviceInterface::connectRealSenseDevices()
 {
-    m_RS_data.clear();
-    //  m_rs2_dev_mtxs.clear();
-    m_rs2_devices.clear();
-    //  m_rs2_points_buffers.clear();
-    //  m_pcl_clouds_buffers.clear();
-    //   m_points_write_indexes.clear();
-    //   m_points_read_indexes.clear();
-    size_t device_count = 0;
-    //        m_deviceNames.clear();
-    // The context represents the current platform with respect to connected devices
     rs2::context ctx;
-    // Using the context we can get all connected devices in a device list
-    m_rs2_device_list = ctx.query_devices();
+    rs2::device_list rs2_device_list = ctx.query_devices();
+    size_t device_count = rs2_device_list.size();
 
-    if (m_rs2_device_list.size() == 0)
-    {
-        if ((false))
-        {
-            std::cout << "No device connected, please connect a RealSense device" << std::endl;
-            rs2::device_hub device_hub(ctx);
-            device_hub.wait_for_device(); // blocking until device connects
-            std::cout << "Device connected" << std::endl;
-            connectRealSenseDevices();
-        }
-        else return 0;
-    }
+    if (device_count == 0)
+        return 0;
     else
     {
-        device_count = m_rs2_device_list.size();
-        std::cout << "Creating " << device_count << " instances of Rs2Device" << std::endl;
-        // Creating pipelines
-        m_rs2_pipelines.reserve(device_count);
-        for  (uint32_t i=0; i < device_count; i++) {
-            m_rs2_pipelines.push_back(rs2::pipeline());
-        }
-
-        m_rs2_devices.reserve(device_count);
-
         // Creating threaded devices for acquisition
-        //   m_rs2_dev_mtxs.reserve(device_count);
+        m_rs2_devices.resize(device_count);
         m_RS_data.resize(device_count);
 
-
-        //  m_rs2_points_buffers.reserve(device_count);
-        //  m_pcl_clouds_buffers.reserve(device_count);
-        //  m_points_write_indexes.resize(device_count, 0);
-        //  m_points_read_indexes.resize(device_count, 0);
-
         for (uint32_t i=0; i < device_count; i++) {
-            rs2::device rs2_device =  m_rs2_device_list[i];
+            rs2::device rs2_device =  rs2_device_list[i];
+            std::string serial_num = getRs2DeviceSerialNum(rs2_device);
 
-            m_RS_data.at(i).buf_ref = new rs2::points[BUF_SIZE_POINTS];
-            m_RS_data.at(i).mtx_ref = new std::mutex();
-            m_RS_data.at(i).w_idx_ref = new size_t(0);
-            m_RS_data.at(i).r_idx_ref = new size_t(0);
-            m_rs2_devices.push_back(new Rs2Device(rs2_device, m_RS_data.at(i) ));
+            size_t id;
+
+            if (serial_num == RS0_CENTRAL_SERIAL)
+            {
+                id = 0;
+                std::cout << "Creating CENTRAL instance of Rs2Device at idx " << id << std::endl;
+            }
+            else if (serial_num == RS1_FRONT_SERIAL)
+            {
+                id = 1;
+                std::cout << "Creating FRONT instances of Rs2Device at idx " << id << std::endl;
+            }
+            else if (serial_num == RS2_REAR_SERIAL)
+            {
+                id = 2;
+                std::cout << "Creating REAR instances of Rs2Device at idx " << id << std::endl;
+            }
+            else
+            {
+                std::cerr << "(DeviceInterface) No matching RS2 serial number" << std::endl;
+                continue;
+            }
+
+
+
+            m_RS_data.at(id).buf_ref = new rs2::points[BUF_SIZE_POINTS];
+            m_RS_data.at(id).mtx_ref = new std::mutex();
+            m_RS_data.at(id).w_idx_ref = new size_t(0);
+            m_RS_data.at(id).r_idx_ref = new size_t(0);
+            m_rs2_devices.at(id) = new Rs2Device( rs2_device, m_RS_data.at(id) );
+
 
             //  m_rs2_points_buffers[i] = new rs2::points[BUF_SIZE_POINTS];
             //  m_pcl_clouds_buffers[i] = pcl::PointCloud<pcl::PointXYZ>::Ptr();

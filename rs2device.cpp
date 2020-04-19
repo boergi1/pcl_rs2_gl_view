@@ -13,13 +13,7 @@ std::string Rs2Device::get_device_name(const rs2::device &dev)
     return name;
 }
 
-std::string Rs2Device::get_device_id(const rs2::device &dev)
-{
-    std::string sn = "Unknown ID";
-    if (dev.supports(RS2_CAMERA_INFO_SERIAL_NUMBER))
-        sn = std::string("#") + dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
-    return sn;
-}
+
 
 std::string Rs2Device::get_sensor_name(const rs2::sensor &sensor)
 {
@@ -160,7 +154,7 @@ Rs2Device::Rs2Device(rs2::device &dev, shared_references_t data_ref)
     m_use_polling = false;
     m_use_gpu_capture = false;
 
-    m_serial_num = get_device_id(m_rs2_dev);
+    m_serial_num = getRs2DeviceSerialNum(m_rs2_dev);
 
     std::cout << "New Realsense device instance: " << m_name << " id: " << m_serial_num
               << " buffer: " << m_ref_RS_to_interface.buf_ref << " mutex: " << m_ref_RS_to_interface.mtx_ref << std::endl;

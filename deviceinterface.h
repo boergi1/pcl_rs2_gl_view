@@ -30,7 +30,7 @@ private:
     std::vector<shared_references_t> m_RS_data;
 
 
-    rs2::device_list m_rs2_device_list;
+
     // std::vector<rs2::sensor> m_sensors;
     // rs2::sensor m_sensors;
     //   std::vector< std::vector<rs2::sensor> > m_sensors; // -> to std::map
@@ -70,10 +70,20 @@ public:
 
     size_t connectRealSenseDevices();
 
+    std::string getRs2DeviceSerialNum(const rs2::device &dev)
+    {
+        std::string sn = "Unknown ID";
+        if (dev.supports(RS2_CAMERA_INFO_SERIAL_NUMBER))
+            sn = std::string("#") + dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+        return sn;
+    }
+
     std::vector<shared_references_t> get_rs_data_refs()
     {
         return m_RS_data;
     }
+
+
 
     //    std::mutex* getPointsBufferMutex(size_t i)
     //    {

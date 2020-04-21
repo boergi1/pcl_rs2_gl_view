@@ -53,18 +53,33 @@ void Rs2Device::print_device_information(const rs2::device &dev)
     }
 }
 
-void Rs2Device::captureClient(bool running)
+int Rs2Device::setCaptureEnabled(bool running)
 {
     if (running)
     {
+        rs2_camera_info info_type = static_cast<rs2_camera_info>(9);
+        if (m_rs2_dev.supports(info_type))
+        {
+            double usb_type = std::atof( m_rs2_dev.get_info(info_type) );
+            if (usb_type < 3.0)
+            {
+                std::cerr << "(Rs2Device) USB type below 3.0" << std::endl;
+                return -1;
+            }
+        }
+        else
+        {
+            std::cerr << "(Rs2Device) Couldn't read USB type" << std::endl;
+            return -1;
+        }
+
         rs2::config rs2_cfg;
         rs2_cfg.enable_device(m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER));
-        rs2_cfg.enable_stream(RS2_STREAM_DEPTH);
-        //  rs2_cfg.enable_stream(RS2_STREAM_DEPTH, FRAME_WIDTH, FRAME_HEIGHT, RS2_FORMAT_Z16, FRAME_RATE);
-        std::cout << "Starting pipe of " << m_serial_num << std::endl;
+        // rs2_cfg.enable_stream(RS2_STREAM_DEPTH);
+        rs2_cfg.enable_stream(RS2_STREAM_DEPTH, FRAME_WIDTH_RS, FRAME_HEIGHT_RS, RS2_FORMAT_Z16, FRAME_RATE_RS);
         m_rs2_pipe = rs2::pipeline();
         rs2::pipeline_profile pipe_profile = m_rs2_pipe.start(rs2_cfg, depth_callback );
-        std::cout << "Enabled streams:";
+        std::cout << "(Rs2Device) Enabled streams:";
         for (auto p : pipe_profile.get_streams())
         {
             auto sp = p.as<rs2::stream_profile>();
@@ -81,8 +96,12 @@ void Rs2Device::captureClient(bool running)
 
     }
     else {
+        std::cout << "(Rs2Device) Stopping pipe" << std::endl;
         m_rs2_pipe.stop();
     }
+
+
+    return 0;
 
 
 
@@ -138,45 +157,24 @@ void Rs2Device::captureClient(bool running)
 
 Rs2Device::Rs2Device(rs2::device &dev, shared_references_t data_ref)
 {
+
     m_ref_RS_to_interface = data_ref;
-
-
-    //  m_mutex_ref = mutex;
-
-
     m_rs2_dev = dev;
-    //m_rs2_pipe_ptr = pipe;
-    m_name = get_device_name(m_rs2_dev);
-    // m_rs2_points_buf_ref = buffer; //new rs2::points[POINT_BUF_SIZE];
-    //  m_points_write_idx_ref = &write_idx_ref;
-    //  * m_points_write_idx_ref = 0;
+    std::cout << "New Realsense device instance" << std::endl;
+   // print_device_information(m_rs2_dev);
+
+   // setCaptureEnabled(true);
+
+
+
     // m_rs2_sensors = dev.query_sensors();
-    m_use_polling = false;
-    m_use_gpu_capture = false;
-
-    m_serial_num = getRs2DeviceSerialNum(m_rs2_dev);
-
-    std::cout << "New Realsense device instance: " << m_name << " id: " << m_serial_num
-              << " buffer: " << m_ref_RS_to_interface.buf_ref << " mutex: " << m_ref_RS_to_interface.mtx_ref << std::endl;
-
-
     //    std::cout << "Sensors:" << std::endl;
     //    for (uint32_t i=0;i<m_rs2_sensors.size();i++)
     //    {
     //        std::cout << "  #" << i << " : " <<  get_sensor_name(m_rs2_sensors[i]) << std::endl;
     //        print_sensor_options(m_rs2_sensors[i]);
     //    }
-    print_device_information(m_rs2_dev);
 
-
-    if (!m_rs2_dev)
-    {
-        std::cout << "Not valid, returning" << std::endl;
-        return;
-    }
-
-
-    captureClient(true);
     //   rs2_pipe.start(rs2_cfg);
     // rs2::pipeline_profile rs2_pipe_profile = rs2_pipe.start(rs2_cfg);
 

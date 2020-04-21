@@ -55,6 +55,37 @@ public:
     //        //  return  m_rs2_devices.at(device_index)->rs2points_buf_mtx;
     //    }
 
+    ~DeviceInterface()
+    {
+        std::cout << "(DeviceInterface) Destructor " << std::endl;
+        while (m_rs2_devices.size())
+        {
+            std::cout << "(DeviceInterface) Freeing Rs2Device memory " << m_rs2_devices.size() << std::endl;
+            m_rs2_devices.back()->setCaptureEnabled(false);
+            delete m_rs2_devices.back();
+            m_rs2_devices.pop_back();
+        }
+
+        while (m_RS_data.size()) {
+            std::cout << "(DeviceInterface) Freeing memory of shared references: " << m_RS_data.size() << std::endl;
+            delete[] static_cast<rs2::points*>( m_RS_data.back().buf_ref );
+            delete m_RS_data.back().mtx_ref;
+            delete m_RS_data.back().w_idx_ref;
+            delete m_RS_data.back().r_idx_ref;
+            m_RS_data.back().buf_ref = nullptr;
+            m_RS_data.back().mtx_ref = nullptr;
+            m_RS_data.back().w_idx_ref = nullptr;
+            m_RS_data.back().r_idx_ref = nullptr;
+            m_RS_data.pop_back();
+        }
+
+        //        m_RS_data.at(id).buf_ref = new rs2::points[BUF_SIZE_POINTS];
+        //        m_RS_data.at(id).mtx_ref = new std::mutex();
+        //        m_RS_data.at(id).w_idx_ref = new size_t(0);
+        //        m_RS_data.at(id).r_idx_ref = new size_t(0);
+        //        m_rs2_devices.at(id) = new Rs2Device( rs2_device, m_RS_data.at(id) );
+    }
+
 
     int connectVideoDevice(int idx)
     {

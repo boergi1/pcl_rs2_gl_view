@@ -13,6 +13,7 @@
 
 
 
+
 class Rs2Device
 {
 private:
@@ -27,17 +28,16 @@ private:
     void start_device_thread();
 
 
-
     rs2::device m_rs2_dev;
-    std::string m_serial_num;
-    std::vector<rs2::sensor> m_rs2_sensors;
+    //    std::string m_serial_num;
+    //    std::vector<rs2::sensor> m_rs2_sensors;
 
 
 
-    rs2::colorizer m_rs2_colorizer;
-    rs2::rates_printer m_rs2_printer;
+    //    rs2::colorizer m_rs2_colorizer;
+    //    rs2::rates_printer m_rs2_printer;
     rs2::pipeline m_rs2_pipe;
-    std::string m_name;
+    //    std::string m_name;
 
     rs2::pointcloud m_curr_rs2_pc_cpu;
     rs2::points m_curr_rs2_points_cpu;
@@ -53,7 +53,7 @@ private:
     bool m_use_gpu_capture = false;
 
     std::string get_device_name(const rs2::device& dev);
-//    std::string getRs2DeviceSerialNum(const rs2::device &dev);
+    //    std::string getRs2DeviceSerialNum(const rs2::device &dev);
 
     std::string get_sensor_name(const rs2::sensor& sensor);
 
@@ -68,7 +68,13 @@ private:
 public:
     Rs2Device(rs2::device &dev, shared_references_t data_ref);
 
-    void captureClient(bool running);
+    ~Rs2Device()
+    {
+        //        std::cout << "(Rs2Device) Deleting camera #"
+        //                  << m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
+    }
+
+    int setCaptureEnabled(bool running);
     //  rs2::points* m_rs2_points_buf_ref;
 
 

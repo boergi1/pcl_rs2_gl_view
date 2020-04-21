@@ -20,7 +20,7 @@ int main() try
     Rs2_PCL_Converter* rs2_pcl_conv;
 
     device_interface = new DeviceInterface;
-    size_t rs2_device_count = device_interface->connectRealSenseDevices(); // make sure that devices always have the same index (format.h)
+    size_t rs2_device_count = device_interface->connectRealSenseDevices();
     if (rs2_device_count > 0)
     {
         pcl_interface = new PclInterface(rs2_device_count);
@@ -28,9 +28,9 @@ int main() try
         rs2_pcl_conv->startThread();
         pcl_interface->startThread();
     }
-    else std::cout << "No Realsense device found" << std::endl;
+    else std::cerr << "No Realsense device found" << std::endl;
 
-   device_interface->connectVideoDevice(2);
+    // device_interface->connectVideoDevice(2);
 
 
     while (true) {

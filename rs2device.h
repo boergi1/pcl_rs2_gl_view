@@ -27,7 +27,6 @@ private:
 
     void start_device_thread();
 
-
     rs2::device m_rs2_dev;
     //    std::string m_serial_num;
     //    std::vector<rs2::sensor> m_rs2_sensors;
@@ -48,7 +47,8 @@ private:
     rs2::spatial_filter m_spat_filter = rs2::spatial_filter(0.65f, 29.0f, 2.0f, 2.0f);  // Spatial    - edge-preserving spatial smoothing
 
 
-    bool m_running = true;
+    bool m_active = true;
+
     bool m_use_polling = false;
     bool m_use_gpu_capture = false;
 
@@ -66,7 +66,7 @@ private:
 
 
 public:
-    Rs2Device(rs2::device &dev, shared_references_t data_ref);
+    Rs2Device(rs2::device &dev, shared_references_s data_ref);
 
     ~Rs2Device()
     {
@@ -74,15 +74,15 @@ public:
         //                  << m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
     }
 
-    int setCaptureEnabled(bool running);
+    void setCaptureEnabled(bool running);
     //  rs2::points* m_rs2_points_buf_ref;
+
+    bool isActive() { return m_active; }
 
 
     std::function<void (rs2::frame)> depth_callback = [&](const rs2::frame& frame)
     {
-
-
-        // std::cout << "callback thread # " << std::this_thread::get_id() << std::endl;
+         std::cout << "depth_callback # " << std::this_thread::get_id() << std::endl;
         if (rs2::frameset fs = frame.as<rs2::frameset>())
         {
 #if (VERBOSE > 0)
@@ -105,19 +105,6 @@ public:
             rs2::pointcloud rs2_pc_cpu;
             rs2_pc_cpu.map_to(depth_tmp);
             m_curr_rs2_points_cpu = rs2_pc_cpu.calculate(depth_tmp);
-
-            //            // DEBUG
-            //            auto v = m_curr_rs2_points_cpu.get_vertices();
-            //            auto debugsize = m_curr_rs2_points_cpu.size();
-            //            int invalid = 0;
-            //            for (size_t i=0; i<debugsize; i++)
-            //            {
-            //                if (areSameF(0.0f, v->z))
-            //                    invalid++;
-            //                v++;
-            //            }
-            //            std::cerr << "DEBUG INVALID: " << invalid << std::endl;
-            //            // !DEBUG
 
             m_ref_RS_to_interface.mtx_ref->lock();
             static_cast<rs2::points*>( m_ref_RS_to_interface.buf_ref )[ *m_ref_RS_to_interface.w_idx_ref ]

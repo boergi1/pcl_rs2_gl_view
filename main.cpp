@@ -32,6 +32,8 @@ int main() try
 
     // device_interface->connectVideoDevice(2);
 
+//    std::this_thread::sleep_for(std::chrono::seconds(2));
+//    delete device_interface;
 
     while (true) {
         std::this_thread::sleep_for(std::chrono::seconds(1));

@@ -103,17 +103,20 @@ private:
                     if (*m_refs_conv_to_RS.at(i).r_idx_ref == BUF_SIZE_POINTS-1)
                         *m_refs_conv_to_RS.at(i).r_idx_ref = 0;
                     m_refs_conv_to_RS.at(i).mtx_ref->unlock();
+
+
 #if (VERBOSE > 1)
-                    std::cout << "(Converter) Increased read index (device " << i << "): " << *m_refs_conv_to_RS.at(i).r_idx_ref
+                    std::cout << "(Converter) Increased read index (" << rs2PositionToString(m_refs_conv_to_RS.at(i).pos_type)
+                              << " device): " << *m_refs_conv_to_RS.at(i).r_idx_ref
                               << " size " << points.size() << std::endl;
 #endif
 
 
                     //  points_to_pcl(points, pcl::PointCloud<pcl::PointXYZ>::Ptr(&tmp_pc), i+1);
 
-                    points_to_pcl(points, tmp_pc, i+1);
+                    points_to_pcl(points, tmp_pc, i);
 
-
+#ifdef tmp_commented_out
                     // Write to pcl::PointCloud buffer
                     m_refs_conv_to_PCL.at(i).mtx_ref->lock();
                     static_cast< std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>* >
@@ -125,6 +128,8 @@ private:
 #if (VERBOSE > 1)
                     std::cout << "(Converter) Increased write index (device " << i << "): " << *m_refs_conv_to_PCL.at(i).w_idx_ref
                               << " size " << tmp_pc->size() << std::endl;
+#endif
+
 #endif
 
 
@@ -166,15 +171,6 @@ private:
             std::cout << "(Converter) Thread took " << std::chrono::duration_cast<std::chrono::milliseconds>
                          (std::chrono::steady_clock::now()-start).count() << " ms, total PC size: " << tmp_pc->points.size() << std::endl;
 #endif
-
-
-
-
-
-
-
-
-
 
         }
 

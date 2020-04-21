@@ -62,6 +62,7 @@ public:
         {
             std::cout << "(DeviceInterface) Freeing Rs2Device memory " << m_rs2_devices.size() << std::endl;
             m_rs2_devices.back()->setCaptureEnabled(false);
+            if (m_rs2_devices.back()->isActive()) std::cerr << "Still active" << std::endl;
             delete m_rs2_devices.back();
             m_rs2_devices.pop_back();
         }

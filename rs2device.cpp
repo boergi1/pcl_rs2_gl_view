@@ -53,56 +53,33 @@ void Rs2Device::print_device_information(const rs2::device &dev)
     }
 }
 
-int Rs2Device::setCaptureEnabled(bool running)
+void Rs2Device::setCaptureEnabled(bool running)
 {
     if (running)
     {
-        rs2_camera_info info_type = static_cast<rs2_camera_info>(9);
-        if (m_rs2_dev.supports(info_type))
-        {
-            double usb_type = std::atof( m_rs2_dev.get_info(info_type) );
-            if (usb_type < 3.0)
-            {
-                std::cerr << "(Rs2Device) USB type below 3.0" << std::endl;
-                return -1;
-            }
-        }
-        else
-        {
-            std::cerr << "(Rs2Device) Couldn't read USB type" << std::endl;
-            return -1;
-        }
-
         rs2::config rs2_cfg;
         rs2_cfg.enable_device(m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER));
-        // rs2_cfg.enable_stream(RS2_STREAM_DEPTH);
-        rs2_cfg.enable_stream(RS2_STREAM_DEPTH, FRAME_WIDTH_RS, FRAME_HEIGHT_RS, RS2_FORMAT_Z16, FRAME_RATE_RS);
+         rs2_cfg.enable_stream(RS2_STREAM_DEPTH);
+       // rs2_cfg.enable_stream(RS2_STREAM_DEPTH, FRAME_WIDTH_RS, FRAME_HEIGHT_RS, RS2_FORMAT_Z16, FRAME_RATE_RS);
         m_rs2_pipe = rs2::pipeline();
         rs2::pipeline_profile pipe_profile = m_rs2_pipe.start(rs2_cfg, depth_callback );
+#if (VERBOSE > 1)
         std::cout << "(Rs2Device) Enabled streams:";
         for (auto p : pipe_profile.get_streams())
         {
-            auto sp = p.as<rs2::stream_profile>();
-
+           // auto sp = p.as<rs2::stream_profile>();
             auto vsp = p.as<rs2::video_stream_profile>();
             std::cout << " " << vsp.stream_name() << " resolution: " << vsp.width() << "x" << vsp.height() << " fps: " << vsp.fps() << " format: " << vsp.format();
         }
-
         std::cout << std::endl;
-
-
-
-
-
+#endif
     }
     else {
         std::cout << "(Rs2Device) Stopping pipe" << std::endl;
         m_rs2_pipe.stop();
     }
 
-
-    return 0;
-
+    m_active = running;
 
 
 
@@ -155,7 +132,7 @@ int Rs2Device::setCaptureEnabled(bool running)
 
 }
 
-Rs2Device::Rs2Device(rs2::device &dev, shared_references_t data_ref)
+Rs2Device::Rs2Device(rs2::device &dev, shared_references_s data_ref)
 {
 
     m_ref_RS_to_interface = data_ref;

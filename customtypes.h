@@ -31,17 +31,39 @@ typedef struct shared_objects_s
     std::mutex mutex;
 } shared_objects_t;
 
+typedef enum
+{
+    CENTRAL = 0,
+    FRONT,
+    REAR,
+    OTHER
+} Rs2Position_t;
+
 typedef struct shared_references_s
 {
-    std::mutex* mtx_ref;
     void* buf_ref;
+    std::mutex* mtx_ref;
     size_t* w_idx_ref;
     size_t* r_idx_ref;
+    Rs2Position_t pos_type;
+    shared_references_s()
+    {
+        buf_ref = nullptr; mtx_ref = nullptr; w_idx_ref = nullptr; r_idx_ref = nullptr;
+    }
+    shared_references_s(void* buf, std::mutex* mtx, size_t* w, size_t* r, Rs2Position_t pos)
+    {
+        buf_ref = buf; mtx_ref = mtx; w_idx_ref = w; r_idx_ref = r; pos_type = pos;
+    }
 } shared_references_t;
 
 
 
+
+
+
 // helper functions
+std::string rs2PositionToString(Rs2Position_t pos);
+
 int roundToInt(double val);
 
 bool areSameD(double a, double b);

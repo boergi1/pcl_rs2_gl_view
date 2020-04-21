@@ -10,7 +10,7 @@
 // Realsense acquisition
 #define FRAME_WIDTH_RS 1280 //1280 //640
 #define FRAME_HEIGHT_RS 720 //720 //480
-#define FRAME_RATE_RS 15 //15 //30
+#define FRAME_RATE_RS 30 //15 //30
 #define FRAME_PERIOD_RS_MS 1000/FRAME_RATE_RS
 #define FRAME_POINTS_COUNT_RS FRAME_WIDTH_RS*FRAME_HEIGHT_RS
 // OpenCV acquisition

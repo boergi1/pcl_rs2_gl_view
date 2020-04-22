@@ -25,7 +25,7 @@ class OcvDevice
 {
 private:
     cv::VideoCapture* m_capture;
-    const double mm_per_pix = static_cast<double>(REF_SIZE_MM)/static_cast<double>(REF_PIXEL);
+    const double mm_per_pix = static_cast<double>(CV_REF_SIZE_MM)/static_cast<double>(CV_REF_PIXEL);
 
     // internal buffers and mutexes
     cv::Mat** m_cvcap_buf;
@@ -86,9 +86,9 @@ private:
         std::cout << "OpenCV capture thread started # " << std::this_thread::get_id() << " device: " << m_cam_idx << std::endl;
         cv::Mat input, image, gray;
         m_capture = new cv::VideoCapture(m_cam_idx); // cv::CAP_V4L2
-        m_capture->set(cv::CAP_PROP_FRAME_WIDTH, FRAME_WIDTH_CV);
-        m_capture->set(cv::CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT_CV);
-        m_capture->set(cv::CAP_PROP_FPS, FRAME_RATE_CV);
+        m_capture->set(cv::CAP_PROP_FRAME_WIDTH, CV_FRAME_WIDTH);
+        m_capture->set(cv::CAP_PROP_FRAME_HEIGHT, CV_FRAME_HEIGHT);
+        m_capture->set(cv::CAP_PROP_FPS, CV_FRAME_RATE);
 
         if (m_capture->isOpened())
         {
@@ -417,8 +417,8 @@ private:
 
                             tmp_new_obj.unique_id = tmp_old_obj.unique_id;
                             tmp_new_obj.lost_ctr = 0;
-                            tmp_new_obj.vx = (tmp_new_obj.cx - tmp_old_obj.cx) / FRAME_PERIOD_CV_MS;
-                            tmp_new_obj.vy = (tmp_new_obj.cy - tmp_old_obj.cy) / FRAME_PERIOD_CV_MS;
+                            tmp_new_obj.vx = (tmp_new_obj.cx - tmp_old_obj.cx) / CV_FRAME_PERIOD_MS;
+                            tmp_new_obj.vy = (tmp_new_obj.cy - tmp_old_obj.cy) / CV_FRAME_PERIOD_MS;
                             m_tracked_objects->at(static_cast<size_t>(objidx)) = tmp_new_obj;
                             updated_inputs.push_back(inpidx);
                             updated_objects.push_back(objidx);
@@ -537,15 +537,15 @@ private:
                     //                    }
 
                     // Draw cv window
-                    cv::Mat tracking_mat = cv::Mat::zeros(FRAME_HEIGHT_CV, FRAME_WIDTH_CV, CV_8U);
+                    cv::Mat tracking_mat = cv::Mat::zeros(CV_FRAME_HEIGHT, CV_FRAME_WIDTH, CV_8U);
                     cv::putText(tracking_mat, std::to_string(tracked_objects_size), cv::Point(20, 40),
                                 cv::FONT_HERSHEY_SIMPLEX, 1, 255, 3);
                     for (size_t i = 0; i < tracked_objects_size; i++)
                     {
                         auto tmpobj = m_tracked_objects->at(i);
                         auto ctr_point = cv::Point2d(tmpobj.cx, tmpobj.cy);
-                        auto vel_point = cv::Point2d(tmpobj.cx + (tmpobj.vx*FRAME_HEIGHT_CV*10),
-                                                     tmpobj.cy + (tmpobj.vy*FRAME_HEIGHT_CV*10));
+                        auto vel_point = cv::Point2d(tmpobj.cx + (tmpobj.vx*CV_FRAME_HEIGHT*10),
+                                                     tmpobj.cy + (tmpobj.vy*CV_FRAME_HEIGHT*10));
                         // Draw on cv::Mat
                         cv::putText(tracking_mat, "# "+std::to_string(tmpobj.unique_id),
                                     cv::Point(roundToInt(tmpobj.cx)-20, roundToInt(tmpobj.cy)-40),

@@ -8,19 +8,22 @@
 #define radiansToDegrees(angleRadians) ((angleRadians) * 180.0 / M_PI)
 
 // Realsense acquisition
-#define FRAME_WIDTH_RS 1280 //1280 //640
-#define FRAME_HEIGHT_RS 720 //720 //480
-#define FRAME_RATE_RS 30 //15 //30
-#define FRAME_PERIOD_RS_MS 1000/FRAME_RATE_RS
-#define FRAME_POINTS_COUNT_RS FRAME_WIDTH_RS*FRAME_HEIGHT_RS
+
+#define RS_FRAME_WIDTH 1280 //1280 //640
+#define RS_FRAME_HEIGHT 720 //720 //480
+#define RS_FRAME_RATE 30 //15 //30
+#define RS_FRAME_PERIOD_MS 1000/RS_FRAME_RATE
+#define RS_FRAME_POINTS_COUNT RS_FRAME_WIDTH*RS_FRAME_HEIGHT
+#define RS_EMITTER_ENABLED 1.f
+#define RS_EMITTER_POWER 1.f
+#define RS_MASTER_SLAVE_CONFIG 1
 // OpenCV acquisition
-#define FRAME_WIDTH_CV 1280  //1600
-#define FRAME_HEIGHT_CV 720 //1200
-#define FRAME_RATE_CV 10 //5
-#define FRAME_PERIOD_CV_MS 1000/FRAME_RATE_CV
-// Hardware parameters
-#define REF_PIXEL 60
-#define REF_SIZE_MM 26
+#define CV_FRAME_WIDTH 1280  //1600
+#define CV_FRAME_HEIGHT 720 //1200
+#define CV_FRAME_RATE 10 //5
+#define CV_FRAME_PERIOD_MS 1000/CV_FRAME_RATE
+#define CV_REF_PIXEL 60
+#define CV_REF_SIZE_MM 26
 
 /*
   opencv cam: x,y (2d) same direction as central rs2, but after conversion to 3d point cs is in cam center
@@ -63,13 +66,13 @@
 #define BUF_SIZE_MATS 100
 #define BUF_SIZE_CVCAP 100
 #define BUF_SIZE_TOBJ 100
-#define BUF_SIZE_VEL FRAME_RATE_CV*2 // x, y pairs
+#define BUF_SIZE_VEL CV_FRAME_RATE*2 // x, y pairs
 // Thread idle delays
-#define DELAY_CONV FRAME_PERIOD_RS_MS/2
-#define DELAY_PROC FRAME_PERIOD_RS_MS/2
-#define DELAY_SEGM FRAME_PERIOD_CV_MS/2
-#define DELAY_TRAC FRAME_PERIOD_CV_MS/2
-#define DELAY_SHOW FRAME_PERIOD_CV_MS/2
+#define DELAY_CONV RS_FRAME_PERIOD_MS/2
+#define DELAY_PROC RS_FRAME_PERIOD_MS/2
+#define DELAY_SEGM CV_FRAME_PERIOD_MS/2
+#define DELAY_TRAC CV_FRAME_PERIOD_MS/2
+#define DELAY_SHOW CV_FRAME_PERIOD_MS/2
 // Toggle viewers
 #define PCL_VIEWER 1
 #define IMSHOW 1

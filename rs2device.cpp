@@ -54,25 +54,101 @@ void Rs2Device::print_device_information(const rs2::device &dev)
 }
 
 void Rs2Device::setCaptureEnabled(bool running)
-{
+{    
     if (running)
     {
-        rs2::config rs2_cfg;
-        rs2_cfg.enable_device(m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER));
-         rs2_cfg.enable_stream(RS2_STREAM_DEPTH);
-       // rs2_cfg.enable_stream(RS2_STREAM_DEPTH, FRAME_WIDTH_RS, FRAME_HEIGHT_RS, RS2_FORMAT_Z16, FRAME_RATE_RS);
-        m_rs2_pipe = rs2::pipeline();
-        rs2::pipeline_profile pipe_profile = m_rs2_pipe.start(rs2_cfg, depth_callback );
-#if (VERBOSE > 1)
-        std::cout << "(Rs2Device) Enabled streams:";
-        for (auto p : pipe_profile.get_streams())
-        {
-           // auto sp = p.as<rs2::stream_profile>();
-            auto vsp = p.as<rs2::video_stream_profile>();
-            std::cout << " " << vsp.stream_name() << " resolution: " << vsp.width() << "x" << vsp.height() << " fps: " << vsp.fps() << " format: " << vsp.format();
+        std::string rs2_serial = m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+        std::cout << "(Rs2Device) Enabling capture of #" << rs2_serial << std::endl;
+
+        m_rs2_dev.hardware_reset();
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+
+
+#if (RS_MASTER_SLAVE_CONFIG == 1)
+        auto advanced_dev = m_rs2_dev.as<rs400::advanced_mode>();
+        auto advanced_sensors = advanced_dev.query_sensors();
+        rs2::sensor depth_sensor;
+
+        for (auto&& sensor : advanced_sensors) {
+            std::string module_name = sensor.get_info(RS2_CAMERA_INFO_NAME);
+            if (module_name.compare("Stereo Module") == 0)
+            {
+                depth_sensor = sensor;
+            }
         }
-        std::cout << std::endl;
+
+        if (depth_sensor)
+        {
+            depth_sensor.set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 0);
+            depth_sensor.set_option(RS2_OPTION_EXPOSURE, 8500); // microseconds
+            depth_sensor.set_option(RS2_OPTION_GAIN, 16);
+            depth_sensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 1);
+        }
+        else {
+            std::cerr << "(Rs2Device) No depth sensor found #" << rs2_serial << std::endl;
+            return;
+        }
+        // Master/slave sync configurations
+        if (m_ref_RS_to_interface.pos_type == Rs2Position_t::CENTRAL)
+        {
+            // master
+            depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 1);
+            std::cout << "(Rs2Device) Camera #" << rs2_serial << " set to MASTER (val="
+                      << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE) << ")" << std::endl;
+        }
+        else
+        {
+            //slave
+            depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 2);
+            std::cout << "(Rs2Device) Camera #" << rs2_serial << " set to SLAVE (val="
+                      << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE) << ")" << std::endl;
+        }
 #endif
+        std::cerr << "DEBUG starting pipe" << std::endl;
+        m_rs2_pipe = rs2::pipeline();
+        // rs2::pipeline rs2_pipe;
+        rs2::config rs2_cfg;
+        rs2_cfg.enable_device(rs2_serial);
+        rs2_cfg.enable_stream(RS2_STREAM_DEPTH, RS_FRAME_WIDTH, RS_FRAME_HEIGHT, RS2_FORMAT_Z16, RS_FRAME_RATE);
+        rs2_cfg.disable_stream(RS2_STREAM_COLOR);
+
+          rs2::pipeline_profile rs2_profile = m_rs2_pipe.start(rs2_cfg, depth_callback);
+
+//        rs2::pipeline_profile pipe_profile = m_rs2_pipe.start(rs2_cfg);
+//        while (true) {
+//            auto frames = m_rs2_pipe.wait_for_frames();
+//            std::cerr << "DEBUG frames arrived: " << frames.size() << std::endl;
+//        }
+
+
+#if (VERBOSE > 1)
+        std::cout << std::endl << "(Rs2Device) Enabled streams:" << std::endl;
+        for (auto p : rs2_profile.get_streams())
+        {
+            // auto sp = p.as<rs2::stream_profile>();
+            auto vsp = p.as<rs2::video_stream_profile>();
+            auto name = vsp.stream_name();
+            auto width = vsp.width();
+            auto height = vsp.height();
+            auto fps = vsp.fps();
+            auto format = vsp.format();
+            auto intr = vsp.get_intrinsics();
+            auto principal_point = std::make_pair(intr.ppx, intr.ppy);
+            auto focal_length = std::make_pair(intr.fx, intr.fy);
+            auto distortion_model = intr.model;
+            auto distortion_coeffs = intr.coeffs;
+            float fov[2]; // X, Y fov
+            rs2_fov(&intr, fov);
+            std::cout << name << ": " << width << "x" << height << "  fps: " << fps << "  format: " << format
+                      << "  principal point: (" << principal_point.first << "," << principal_point.second
+                      << ")  focal length: fx="<< focal_length.first << " fy=" << focal_length.second
+                      << "  distortion model: " << distortion_model << "  distortion matrix: ["
+                      << distortion_coeffs[0] << " " << distortion_coeffs[1] << " " << distortion_coeffs[2]
+                      << " " << distortion_coeffs[3] << " " << distortion_coeffs[4]
+                      << "]  FOV: x=" << fov[0] << "° y=" << fov[1] << "°" << std::endl << std::endl;
+        }
+#endif
+
     }
     else {
         std::cout << "(Rs2Device) Stopping pipe" << std::endl;
@@ -132,15 +208,17 @@ void Rs2Device::setCaptureEnabled(bool running)
 
 }
 
+bool Rs2Device::isActive() { return m_active; }
+
 Rs2Device::Rs2Device(rs2::device &dev, shared_references_s data_ref)
 {
 
     m_ref_RS_to_interface = data_ref;
     m_rs2_dev = dev;
     std::cout << "New Realsense device instance" << std::endl;
-   // print_device_information(m_rs2_dev);
+    // print_device_information(m_rs2_dev);
 
-   // setCaptureEnabled(true);
+    // setCaptureEnabled(true);
 
 
 
@@ -164,4 +242,10 @@ Rs2Device::Rs2Device(rs2::device &dev, shared_references_s data_ref)
     // m_dev_thread.join();
 
 
+}
+
+Rs2Device::~Rs2Device()
+{
+    std::cout << "(Rs2Device) Deleting rs2 camera #"
+              << m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
 }

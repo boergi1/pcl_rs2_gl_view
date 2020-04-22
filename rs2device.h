@@ -4,6 +4,7 @@
 #include <iostream>
 #include <librealsense2/rs.hpp>
 #include <librealsense2/rsutil.h>
+#include <librealsense2/rs_advanced_mode.hpp>
 #include <thread>
 #include <mutex>
 //#include <deviceinterface.h>
@@ -22,6 +23,8 @@ private:
     // size_t* m_points_write_idx_ref = nullptr;
 
     shared_references_t m_ref_RS_to_interface;
+
+    double m_last_frame_time = 0.0;
 
     //   void*               start_flag;
 
@@ -68,34 +71,50 @@ private:
 public:
     Rs2Device(rs2::device &dev, shared_references_s data_ref);
 
-    ~Rs2Device()
-    {
-        //        std::cout << "(Rs2Device) Deleting camera #"
-        //                  << m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
-    }
+    ~Rs2Device();
 
     void setCaptureEnabled(bool running);
     //  rs2::points* m_rs2_points_buf_ref;
 
-    bool isActive() { return m_active; }
+    bool isActive();
 
 
     std::function<void (rs2::frame)> depth_callback = [&](const rs2::frame& frame)
     {
-         std::cout << "depth_callback # " << std::this_thread::get_id() << std::endl;
+        // hw sync: https://github.com/IntelRealSense/librealsense/issues/2637
+       // std::cout << "depth_callback # " << std::this_thread::get_id() << std::endl;
         if (rs2::frameset fs = frame.as<rs2::frameset>())
         {
 #if (VERBOSE > 0)
             auto start = std::chrono::high_resolution_clock::now();
 #endif
             if (fs.size() > 1)
-                std::cerr << "(Realsense device) Multiple frames arrived: " << fs.size() << std::endl;
+                std::cerr << "(Rs2Device) Multiple frames arrived: " << fs.size() << std::endl;
+
             const rs2::frame& depth_tmp = fs.get_depth_frame();
             if (!depth_tmp)
             {
-                std::cerr << "(Realsense device) No depth frame" << std::endl;
+                std::cerr << "(Rs2Device) No depth frame" << std::endl;
                 return;
             }
+
+            std::cout.precision(std::numeric_limits<double>::max_digits10);
+            std::cout << "(Rs2Device) Drift: " << depth_tmp.get_timestamp() - m_last_frame_time << ", ";
+            m_last_frame_time = depth_tmp.get_timestamp();
+
+            switch(depth_tmp.get_frame_timestamp_domain()) {
+                case (RS2_TIMESTAMP_DOMAIN_HARDWARE_CLOCK):
+                    std::cout << "(Rs2Device) Hardware Clock ";
+                    break;
+                case (RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME):
+                    std::cout << "(Rs2Device) System Time ";
+                    break;
+                default:
+                    std::cout << "(Rs2Device) Unknown Time ";
+                    break;
+            }
+            std::cout << "TS: " << std::scientific << depth_tmp.get_timestamp()
+                << " (" << depth_tmp.get_frame_number() << ")" << std::endl;
 
             // Filters
             //            m_dec_filter.process(depth_tmp); // reduce noise
@@ -110,7 +129,7 @@ public:
             static_cast<rs2::points*>( m_ref_RS_to_interface.buf_ref )[ *m_ref_RS_to_interface.w_idx_ref ]
             = m_curr_rs2_points_cpu;
             *m_ref_RS_to_interface.w_idx_ref = *m_ref_RS_to_interface.w_idx_ref + 1;
-            std::cout << "(Realsense device) Increased write index (cpu): " << *m_ref_RS_to_interface.w_idx_ref
+            std::cout << "(Rs2Device) Increased write index (cpu): " << *m_ref_RS_to_interface.w_idx_ref
                       << " size " << m_curr_rs2_points_cpu.size() << std::endl;
             if (*m_ref_RS_to_interface.w_idx_ref == BUF_SIZE_POINTS-1)
                 *m_ref_RS_to_interface.w_idx_ref = 0;
@@ -135,13 +154,13 @@ public:
             //               // counters[f.get_profile().unique_id()]++;
             //            }
 #if (VERBOSE > 1)
-            std::cout << "(Realsense device) Callback took " << std::chrono::duration_cast<std::chrono::milliseconds>
+            std::cout << "(Rs2Device) Callback took " << std::chrono::duration_cast<std::chrono::milliseconds>
                          (std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
 #endif
         }
         else
         {
-            std::cerr << "(Realsense device) Unhandled frame arrived: " << fs.size() << std::endl;
+            std::cerr << "(Rs2Device) Unhandled frame arrived: " << fs.size() << std::endl;
             // Stream that bypass synchronization (such as IMU) will produce single frames
             //  counters[frame.get_profile().unique_id()]++;
         }

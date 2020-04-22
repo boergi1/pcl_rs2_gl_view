@@ -75,7 +75,7 @@ private:
         //        pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud(new pcl::PointCloud<pcl::PointXYZ>
         //                                                        (FRAME_POINTS_COUNT_RS*m_rs2_device_count,1));
 
-        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(FRAME_POINTS_COUNT_RS,1));
+        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_POINTS_COUNT,1));
 
         //        pcl::PointCloud<pcl::PointXYZ> tmp_pc(pcl::PointCloud<pcl::PointXYZ>(FRAME_POINTS_COUNT_RS,1));
 
@@ -104,13 +104,11 @@ private:
                         *m_refs_conv_to_RS.at(i).r_idx_ref = 0;
                     m_refs_conv_to_RS.at(i).mtx_ref->unlock();
 
-
 #if (VERBOSE > 1)
                     std::cout << "(Converter) Increased read index (" << rs2PositionToString(m_refs_conv_to_RS.at(i).pos_type)
                               << " device): " << *m_refs_conv_to_RS.at(i).r_idx_ref
                               << " size " << points.size() << std::endl;
 #endif
-
 
                     //  points_to_pcl(points, pcl::PointCloud<pcl::PointXYZ>::Ptr(&tmp_pc), i+1);
 
@@ -301,7 +299,7 @@ public:
     {
         m_rs2_device_count = device_count;
 
-        std::cout << "Created instance of Rs2PclConverter: " << std::this_thread::get_id() << std::endl;
+        std::cout << "Created instance of Rs2PclConverter" << std::endl;
 
         m_refs_conv_to_RS = in_interface_ref->get_rs_data_refs();
         m_refs_conv_to_PCL = out_interface_ref->get_pcl_data_refs();

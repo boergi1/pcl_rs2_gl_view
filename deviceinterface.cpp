@@ -18,6 +18,7 @@ size_t DeviceInterface::connectRealSenseDevices()
     rs2::context ctx;
     rs2::device_list rs2_device_list = ctx.query_devices();
     size_t device_count = rs2_device_list.size();
+    std::cerr << "(DeviceInterface) Found rs2 devices: " << device_count << std::endl;
     if (device_count)
     {
         // Creating threaded devices for acquisition
@@ -37,7 +38,7 @@ size_t DeviceInterface::connectRealSenseDevices()
                 id = Rs2Position_t::REAR;
             else
             {
-                std::cerr << "(DeviceInterface) No matching RS2 serial number" << std::endl;
+                std::cerr << "(DeviceInterface) No matching RS2 serial number: " << serial_num << std::endl;
                 id = Rs2Position_t::OTHER;
                 //continue;
             }
@@ -46,7 +47,6 @@ size_t DeviceInterface::connectRealSenseDevices()
             if (rs2_device.supports(cam_info_usb))
             {
                 double usb_type = std::atof( rs2_device.get_info(cam_info_usb) );
-                std::cout << "(DeviceInterface) USB type: " << usb_type << std::endl;
                 if (usb_type < 3.0)
                 {
                     std::cerr << "(DeviceInterface) USB type below 3.0: " << serial_num << std::endl;
@@ -59,18 +59,18 @@ size_t DeviceInterface::connectRealSenseDevices()
                 continue;
             }
 
-#if (VERBOSE > 1)
+#if (VERBOSE > 3)
             switch (id) {
             case Rs2Position_t::CENTRAL: {
                 std::cout << "(DeviceInterface) Creating CENTRAL instance of Rs2Device at idx "
                           << m_rs2_devices.size() << std::endl; break;
             }
             case Rs2Position_t::FRONT: {
-                std::cout << "(DeviceInterface) Creating FRONT instances of Rs2Device at idx "
+                std::cout << "(DeviceInterface) Creating FRONT instance of Rs2Device at idx "
                           << m_rs2_devices.size() << std::endl; break;
             }
             case Rs2Position_t::REAR: {
-                std::cout << "(DeviceInterface) Creating REAR instances of Rs2Device at idx "
+                std::cout << "(DeviceInterface) Creating REAR instance of Rs2Device at idx "
                           << m_rs2_devices.size() << std::endl; break;
             }
             default: break;
@@ -81,7 +81,11 @@ size_t DeviceInterface::connectRealSenseDevices()
             m_rs2_devices.push_back(new Rs2Device( rs2_device, m_RS_data.back()));
             // Enable threaded rs2 callback functions
             std::this_thread::sleep_for(std::chrono::nanoseconds(100));
-            m_rs2_devices.back()->setCaptureEnabled(true);
+//            m_rs2_devices.back()->setCaptureEnabled(true);
+        }
+
+        for (size_t i = 0; i < m_rs2_devices.size(); i++) {
+            m_rs2_devices.at(i)->setCaptureEnabled(true);
         }
 
         std::vector<Rs2Device*>::iterator iter = m_rs2_devices.begin();

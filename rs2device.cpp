@@ -55,13 +55,15 @@ void Rs2Device::print_device_information(const rs2::device &dev)
 
 void Rs2Device::setCaptureEnabled(bool running)
 {    
+    std::cout << std::endl << "setCaptureEnabled begin " << getPositionType() << std::endl << std::endl;
     if (running)
     {
         std::string rs2_serial = m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
-        std::cout << "(Rs2Device) Enabling capture of #" << rs2_serial << std::endl;
+        std::cout << "(Rs2Device) Enabling capture of " << getPositionType() << " #" << rs2_serial << std::endl;
 
-        m_rs2_dev.hardware_reset();
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+
+//        m_rs2_dev.hardware_reset();
+//        std::this_thread::sleep_for(std::chrono::seconds(3));
 
 
 #if (RS_MASTER_SLAVE_CONFIG == 1)
@@ -93,18 +95,17 @@ void Rs2Device::setCaptureEnabled(bool running)
         {
             // master
             depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 1);
-            std::cout << "(Rs2Device) Camera #" << rs2_serial << " set to MASTER (val="
+            std::cout << "(Rs2Device) Camera " << getPositionType() << " #" << rs2_serial << " set to MASTER (val="
                       << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE) << ")" << std::endl;
         }
         else
         {
             //slave
             depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 2);
-            std::cout << "(Rs2Device) Camera #" << rs2_serial << " set to SLAVE (val="
+            std::cout << "(Rs2Device) Camera " << getPositionType() << " #" << rs2_serial << " set to SLAVE (val="
                       << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE) << ")" << std::endl;
         }
 #endif
-        std::cerr << "DEBUG starting pipe" << std::endl;
         m_rs2_pipe = rs2::pipeline();
         // rs2::pipeline rs2_pipe;
         rs2::config rs2_cfg;
@@ -112,16 +113,16 @@ void Rs2Device::setCaptureEnabled(bool running)
         rs2_cfg.enable_stream(RS2_STREAM_DEPTH, RS_FRAME_WIDTH, RS_FRAME_HEIGHT, RS2_FORMAT_Z16, RS_FRAME_RATE);
         rs2_cfg.disable_stream(RS2_STREAM_COLOR);
 
-          rs2::pipeline_profile rs2_profile = m_rs2_pipe.start(rs2_cfg, depth_callback);
+        rs2::pipeline_profile rs2_profile = m_rs2_pipe.start(rs2_cfg, depth_callback);
 
-//        rs2::pipeline_profile pipe_profile = m_rs2_pipe.start(rs2_cfg);
-//        while (true) {
-//            auto frames = m_rs2_pipe.wait_for_frames();
-//            std::cerr << "DEBUG frames arrived: " << frames.size() << std::endl;
-//        }
+        //        rs2::pipeline_profile pipe_profile = m_rs2_pipe.start(rs2_cfg);
+        //        while (true) {
+        //            auto frames = m_rs2_pipe.wait_for_frames();
+        //            std::cerr << "DEBUG frames arrived: " << frames.size() << std::endl;
+        //        }
 
 
-#if (VERBOSE > 1)
+#if (VERBOSE > 3)
         std::cout << std::endl << "(Rs2Device) Enabled streams:" << std::endl;
         for (auto p : rs2_profile.get_streams())
         {
@@ -205,7 +206,7 @@ void Rs2Device::setCaptureEnabled(bool running)
 
 
 
-
+    std::cout << std::endl << "setCaptureEnabled end " << getPositionType() << std::endl << std::endl;
 }
 
 bool Rs2Device::isActive() { return m_active; }
@@ -215,7 +216,7 @@ Rs2Device::Rs2Device(rs2::device &dev, shared_references_s data_ref)
 
     m_ref_RS_to_interface = data_ref;
     m_rs2_dev = dev;
-    std::cout << "New Realsense device instance" << std::endl;
+    std::cout << "New Realsense device, type: "<< getPositionType() << " #" << m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
     // print_device_information(m_rs2_dev);
 
     // setCaptureEnabled(true);

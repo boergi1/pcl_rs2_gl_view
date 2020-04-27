@@ -19,6 +19,8 @@ class DeviceInterface
 {
 private:
 
+    rs2::context m_ctx;
+
     std::vector<Rs2Device *> m_rs2_devices;
     std::vector<rs2::pipeline> m_rs2_pipelines;
 
@@ -27,7 +29,7 @@ private:
     //  std::vector<size_t> m_points_write_indexes;
     //  std::vector<size_t> m_points_read_indexes;
 
-    std::vector<shared_references_t> m_RS_data;
+    std::vector<rs2_references_t> m_RS_data;
 
 
 
@@ -58,6 +60,26 @@ public:
     ~DeviceInterface()
     {
         std::cout << "(DeviceInterface) Destructor " << std::endl;
+        disconnectRealSenseDevices();
+    }
+
+
+    int connectVideoDevice(int idx)
+    {
+        std::cout << "Connecting OpenCV device" << std::endl;
+        m_opencv_devices_dev_mtxs.push_back(new std::mutex);
+        m_ocv_mat_buffers.push_back(new cv::Mat[BUF_SIZE_MATS]);
+        m_ocv_write_indexes.push_back(0);
+        m_opencv_devices.push_back(new OcvDevice(idx, m_opencv_devices_dev_mtxs.back(),
+                                                 m_ocv_mat_buffers.back(), m_ocv_write_indexes.back()));
+        return static_cast<int>( m_opencv_devices.size() );
+    }
+
+
+    size_t connectRealSenseDevices();
+
+    void disconnectRealSenseDevices()
+    {
         while (m_rs2_devices.size())
         {
             std::cout << "(DeviceInterface) Freeing Rs2Device memory " << m_rs2_devices.size() << std::endl;
@@ -79,28 +101,7 @@ public:
             m_RS_data.back().r_idx_ref = nullptr;
             m_RS_data.pop_back();
         }
-
-        //        m_RS_data.at(id).buf_ref = new rs2::points[BUF_SIZE_POINTS];
-        //        m_RS_data.at(id).mtx_ref = new std::mutex();
-        //        m_RS_data.at(id).w_idx_ref = new size_t(0);
-        //        m_RS_data.at(id).r_idx_ref = new size_t(0);
-        //        m_rs2_devices.at(id) = new Rs2Device( rs2_device, m_RS_data.at(id) );
     }
-
-
-    int connectVideoDevice(int idx)
-    {
-        std::cout << "Connecting OpenCV device" << std::endl;
-        m_opencv_devices_dev_mtxs.push_back(new std::mutex);
-        m_ocv_mat_buffers.push_back(new cv::Mat[BUF_SIZE_MATS]);
-        m_ocv_write_indexes.push_back(0);
-        m_opencv_devices.push_back(new OcvDevice(idx, m_opencv_devices_dev_mtxs.back(),
-                                                 m_ocv_mat_buffers.back(), m_ocv_write_indexes.back()));
-        return static_cast<int>( m_opencv_devices.size() );
-    }
-
-
-    size_t connectRealSenseDevices();
 
     std::string getRs2DeviceSerialNum(const rs2::device &dev)
     {
@@ -110,7 +111,7 @@ public:
         return sn;
     }
 
-    std::vector<shared_references_t> get_rs_data_refs()
+    std::vector<rs2_references_t> get_rs_data_refs()
     {
         return m_RS_data;
     }

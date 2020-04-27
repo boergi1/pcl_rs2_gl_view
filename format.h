@@ -34,7 +34,7 @@
             rotation and translation will change later
 */
 // RS0 central
-#define RS0_CENTRAL_SERIAL "#950122060662"
+#define RS0_CENTRAL_SERIAL "950122060662"
 #define TRAN_RS0_TO_CV0_X_M 3.0
 #define TRAN_RS0_TO_CV0_Y_M 0.0
 #define TRAN_RS0_TO_CV0_Z_M 0.1
@@ -42,7 +42,7 @@
 //#define ROT_RS0_TO_CV0_Y_ANG 0.0
 //#define ROT_RS0_TO_CV0_Z_ANG 0.0
 // RS1 front
-#define RS1_FRONT_SERIAL "#950122060486"
+#define RS1_FRONT_SERIAL "950122060486"
 #define TRAN_RS1_TO_RS0_X_M 0.0
 #define TRAN_RS1_TO_RS0_Y_M -0.020
 #define TRAN_RS1_TO_RS0_Z_M -0.010
@@ -50,7 +50,7 @@
 //#define ROT_RS1_TO_RS0_Y_ANG 0.0
 //#define ROT_RS1_TO_RS0_Z_ANG 0.0
 // RS2 rear
-#define RS2_REAR_SERIAL "#950122061070"
+#define RS2_REAR_SERIAL "950122061070"
 #define TRAN_RS2_TO_RS0_X_M 0.0
 #define TRAN_RS2_TO_RS0_Y_M 0.020
 #define TRAN_RS2_TO_RS0_Z_M -0.010
@@ -61,7 +61,7 @@
 
 
 // Buffer sizes
-#define BUF_SIZE_POINTS 100
+#define BUF_SIZE_RS2FRAMES 100
 #define BUF_SIZE_CLOUDS 100
 #define BUF_SIZE_MATS 100
 #define BUF_SIZE_CVCAP 100
@@ -74,7 +74,7 @@
 #define DELAY_TRAC CV_FRAME_PERIOD_MS/2
 #define DELAY_SHOW CV_FRAME_PERIOD_MS/2
 // Toggle viewers
-#define PCL_VIEWER 1
+#define PCL_VIEWER 0
 #define IMSHOW 1
 
 

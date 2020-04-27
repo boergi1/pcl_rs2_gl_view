@@ -34,7 +34,7 @@ typedef pcl::PointCloud<pcl::PointXYZ> PointCloud;
 class Rs2_PCL_Converter
 {
 private:
-    std::vector<shared_references_t> m_refs_conv_to_RS;
+    std::vector<rs2_references_t> m_refs_conv_to_RS;
     std::vector<shared_references_t> m_refs_conv_to_PCL;
 
 
@@ -100,7 +100,7 @@ private:
                     rs2::points points = static_cast< rs2::points* >( m_refs_conv_to_RS.at(i).buf_ref )
                             [ *m_refs_conv_to_RS.at(i).r_idx_ref ];
                     *m_refs_conv_to_RS.at(i).r_idx_ref = *m_refs_conv_to_RS.at(i).r_idx_ref + 1;
-                    if (*m_refs_conv_to_RS.at(i).r_idx_ref == BUF_SIZE_POINTS-1)
+                    if (*m_refs_conv_to_RS.at(i).r_idx_ref == BUF_SIZE_RS2FRAMES-1)
                         *m_refs_conv_to_RS.at(i).r_idx_ref = 0;
                     m_refs_conv_to_RS.at(i).mtx_ref->unlock();
 

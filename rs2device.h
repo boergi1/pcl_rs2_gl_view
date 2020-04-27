@@ -22,23 +22,25 @@ private:
 
     // size_t* m_points_write_idx_ref = nullptr;
 
-    shared_references_t m_ref_RS_to_interface;
+    rs2_references_t m_ref_RS_to_interface;
 
     double m_last_frame_time = 0.0;
 
     //   void*               start_flag;
 
-    void start_device_thread();
+
 
     rs2::device m_rs2_dev;
+    size_t m_rs2_dev_id;
     //    std::string m_serial_num;
     //    std::vector<rs2::sensor> m_rs2_sensors;
 
-
+    std::thread m_capture_thread;
+    bool m_capture_running = false;
 
     //    rs2::colorizer m_rs2_colorizer;
     //    rs2::rates_printer m_rs2_printer;
-    rs2::pipeline m_rs2_pipe;
+   // rs2::pipeline m_rs2_pipe;
     //    std::string m_name;
 
     rs2::pointcloud m_curr_rs2_pc_cpu;
@@ -66,10 +68,12 @@ private:
 
     void print_device_information(const rs2::device& dev);
 
+    void capture_thread_func();
+
 
 
 public:
-    Rs2Device(rs2::device &dev, shared_references_s data_ref);
+    Rs2Device(rs2::device &dev, size_t dev_id, rs2_references_t data_ref);
 
     ~Rs2Device();
 
@@ -143,14 +147,9 @@ public:
             *m_ref_RS_to_interface.w_idx_ref = *m_ref_RS_to_interface.w_idx_ref + 1;
             std::cout << "(Rs2Device " << getPositionType() << ") Increased write index: " << *m_ref_RS_to_interface.w_idx_ref
                       << " size " << m_curr_rs2_points_cpu.size() << std::endl;
-            if (*m_ref_RS_to_interface.w_idx_ref == BUF_SIZE_POINTS-1)
+            if (*m_ref_RS_to_interface.w_idx_ref == BUF_SIZE_RS2FRAMES-1)
                 *m_ref_RS_to_interface.w_idx_ref = 0;
             m_ref_RS_to_interface.mtx_ref->unlock();
-
-
-
-
-
 
             //            m_mutex_ref->lock();
             //            m_rs2_points_buf_ref[*m_points_write_idx_ref] = m_curr_rs2_points_cpu;

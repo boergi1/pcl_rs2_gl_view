@@ -14,18 +14,55 @@ DeviceInterface::DeviceInterface()
 
 
 size_t DeviceInterface::connectRealSenseDevices()
-{
+{    
+    size_t device_id = 0;
+
+    for (auto&& dev : m_ctx.query_devices())
+    {
+        Rs2Position_t pos_id;
+        std::string serial_num = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+
+        if (serial_num == RS0_CENTRAL_SERIAL)
+            pos_id = Rs2Position_t::CENTRAL;
+        else if (serial_num == RS1_FRONT_SERIAL)
+            pos_id = Rs2Position_t::FRONT;
+        else if (serial_num == RS2_REAR_SERIAL)
+            pos_id = Rs2Position_t::REAR;
+        else
+        {
+            std::cerr << "(DeviceInterface) No matching RS2 serial number: " << serial_num << std::endl;
+            pos_id = Rs2Position_t::OTHER;
+            //continue;
+        }
+        
+        
+
+        m_RS_data.push_back(rs2_references_t(new rs2::frame[BUF_SIZE_RS2FRAMES], new std::mutex(),
+                                                new size_t(0), new size_t(0), pos_id));
+        m_rs2_devices.push_back(new Rs2Device( dev, device_id, m_RS_data.back()));
+
+        m_rs2_devices.back()->setCaptureEnabled(true);
+
+        device_id++;
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    }
+
+    return device_id;
+
     rs2::context ctx;
     rs2::device_list rs2_device_list = ctx.query_devices();
-    size_t device_count = rs2_device_list.size();
-    std::cerr << "(DeviceInterface) Found rs2 devices: " << device_count << std::endl;
-    if (device_count)
+    size_t device_ct = rs2_device_list.size();
+    std::cerr << "(DeviceInterface) Found rs2 devices: " << device_id << std::endl;
+
+
+    if (device_ct)
     {
         // Creating threaded devices for acquisition
-//        m_rs2_devices.clear();
-//        m_RS_data.clear();
+        //        m_rs2_devices.clear();
+        //        m_RS_data.clear();
 
-        for (uint32_t i=0; i < device_count; i++) {
+        for (uint32_t i=0; i < device_ct; i++) {
             // use only registered devices
             rs2::device rs2_device = rs2_device_list[i];
             std::string serial_num = getRs2DeviceSerialNum(rs2_device);
@@ -76,12 +113,12 @@ size_t DeviceInterface::connectRealSenseDevices()
             default: break;
             }
 #endif
-            m_RS_data.push_back(shared_references_t(new rs2::points[BUF_SIZE_POINTS], new std::mutex(),
+            m_RS_data.push_back(rs2_references_t(new rs2::frame[BUF_SIZE_RS2FRAMES], new std::mutex(),
                                                     new size_t(0), new size_t(0), id));
-            m_rs2_devices.push_back(new Rs2Device( rs2_device, m_RS_data.back()));
+            m_rs2_devices.push_back(new Rs2Device( rs2_device, i, m_RS_data.back()));
             // Enable threaded rs2 callback functions
-            std::this_thread::sleep_for(std::chrono::nanoseconds(100));
-//            m_rs2_devices.back()->setCaptureEnabled(true);
+            // std::this_thread::sleep_for(std::chrono::nanoseconds(100));
+            //            m_rs2_devices.back()->setCaptureEnabled(true);
         }
 
         for (size_t i = 0; i < m_rs2_devices.size(); i++) {
@@ -92,9 +129,9 @@ size_t DeviceInterface::connectRealSenseDevices()
         while( iter != m_rs2_devices.end() )
         {
             if ( ! (*iter)->isActive() )
-                device_count--;
+                device_ct--;
             ++iter;
         }
     }
-    return device_count;
+    return device_ct;
 }

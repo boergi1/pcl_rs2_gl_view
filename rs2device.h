@@ -50,7 +50,8 @@ private:
     rs2::points m_curr_rs2_points_cpu;
 
 
-    bool m_active = true;
+    bool m_active = false;
+    bool m_recording = false;
 
     bool m_use_polling = false;
     bool m_use_gpu_capture = false;
@@ -69,8 +70,6 @@ private:
 
     void print_sensor_options(const rs2::sensor& sensor);
 
-    void streamVideo();
-
     void print_device_information(const rs2::device& dev);
 
     void rs2_capture_thread_func();
@@ -83,6 +82,8 @@ public:
     ~Rs2Device();
 
     void setCaptureEnabled(bool running);
+
+    void setRecordingEnabled(bool recording) { m_recording = recording; }
     //  rs2::points* m_rs2_points_buf_ref;
 
     bool isActive();

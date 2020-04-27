@@ -187,35 +187,38 @@ void Rs2Device::rs2_capture_thread_func()
 
 
 
-//        const rs2_frame* frame_handle = depth_frame.get();
-//        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr) )
-//        {
-//            rs2_metadata_type frame_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr);
-//            std::cout << "DEBUG RS2_FRAME_METADATA_FRAME_TIMESTAMP " << frame_ts_meta << std::endl;
-//        }
-//        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr) )
-//        {
-//            rs2_metadata_type sensor_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr);
-//            std::cout << "DEBUG RS2_FRAME_METADATA_SENSOR_TIMESTAMP " << sensor_ts_meta << std::endl;
-//        }
-//        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr) )
-//        {
-//            rs2_metadata_type arrival_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr);
-//            std::cout << "DEBUG RS2_FRAME_METADATA_TIME_OF_ARRIVAL " << arrival_ts_meta << std::endl;
-//        }
-//        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr) )
-//        {
-//            rs2_metadata_type backend_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr);
-//            std::cout << "DEBUG RS2_FRAME_METADATA_BACKEND_TIMESTAMP " << backend_ts_meta << std::endl;
-//        }
+        //        const rs2_frame* frame_handle = depth_frame.get();
+        //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr) )
+        //        {
+        //            rs2_metadata_type frame_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr);
+        //            std::cout << "DEBUG RS2_FRAME_METADATA_FRAME_TIMESTAMP " << frame_ts_meta << std::endl;
+        //        }
+        //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr) )
+        //        {
+        //            rs2_metadata_type sensor_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr);
+        //            std::cout << "DEBUG RS2_FRAME_METADATA_SENSOR_TIMESTAMP " << sensor_ts_meta << std::endl;
+        //        }
+        //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr) )
+        //        {
+        //            rs2_metadata_type arrival_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr);
+        //            std::cout << "DEBUG RS2_FRAME_METADATA_TIME_OF_ARRIVAL " << arrival_ts_meta << std::endl;
+        //        }
+        //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr) )
+        //        {
+        //            rs2_metadata_type backend_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr);
+        //            std::cout << "DEBUG RS2_FRAME_METADATA_BACKEND_TIMESTAMP " << backend_ts_meta << std::endl;
+        //        }
 
 #endif
-        // Filters
-        m_dec_filter.process(depth_frame);
-        m_thr_filter.process(depth_frame);
-        m_spat_filter.process(depth_frame);
-
-        m_frame_queue.enqueue(depth_frame);
+        if (m_recording)
+        {
+            // filter
+            m_dec_filter.process(depth_frame);
+            m_thr_filter.process(depth_frame);
+            m_spat_filter.process(depth_frame);
+            // enqueue
+            m_frame_queue.enqueue(depth_frame);
+        }
 
 
 
@@ -248,9 +251,8 @@ void Rs2Device::rs2_capture_thread_func()
 
 void Rs2Device::setCaptureEnabled(bool running)
 {    
-    std::cout << std::endl << "DEBUG setCaptureEnabled start " << getPositionTypeStr() << std::endl << std::endl;
     std::string serial = m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
-    if (running)
+    if (running && !m_capture_thread.joinable())
     {
         std::cout << "(Rs2Device) Enabling capture of " << getPositionTypeStr() << " #" << serial << std::endl;
         m_capture_thread = std::thread(&Rs2Device::rs2_capture_thread_func, this);
@@ -353,10 +355,6 @@ void Rs2Device::setCaptureEnabled(bool running)
     //    }
     //    m_rs2_pipe.stop();
     //    std::cout << "Device thread" << m_name << " ended" << std::endl;
-
-
-
-    std::cout << std::endl << "DEBUG setCaptureEnabled end " << getPositionTypeStr() << std::endl << std::endl;
 }
 
 bool Rs2Device::isActive() { return m_active; }

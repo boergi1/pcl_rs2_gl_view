@@ -127,12 +127,48 @@ public:
 };
 
 #define THREAD_POOL_SIZE 7 // Using Max ( (2x Physical Core Count) - 1 ) looks like a good idea
-#define ROUND_ROBIN 1
+#define ROUND_ROBIN 0
 class ThreadController
 {
-private:
+protected:
     std::vector<ThreadInterface*> m_thread_pool;
 public:
+
+    //    class Parent
+    //    {
+    //      protected:
+    //        virtual void fun(int i)
+    //        {
+    //          cout<<"Parent::fun functionality write here"<<endl;
+    //        }
+    //        void fun1(int i)
+    //        {
+    //          cout<<"Parent::fun1 functionality write here"<<endl;
+    //        }
+    //        void fun2()
+    //        {
+
+    //          cout<<"Parent::fun3 functionality write here"<<endl;
+    //        }
+
+    //    };
+
+    //    class Child:public Parent
+    //    {
+    //      public:
+    //        virtual void fun(int i)
+    //        {
+    //          cout<<"Child::fun partial functionality write here"<<endl;
+    //          Parent::fun(++i);
+    //          Parent::fun2();
+    //        }
+    //        void fun1(int i)
+    //        {
+    //          cout<<"Child::fun1 partial functionality write here"<<endl;
+    //          Parent::fun1(++i);
+    //        }
+
+    //    };
 
     void init()
     {
@@ -155,11 +191,11 @@ public:
 #if ROUND_ROBIN == 0
         int tIdx = 0;
         int tTasks = 0x7FFFFFFF;
-        for(int i=0; i< this->interfaces.size() ; i++)
+        for(int i=0; i< this->m_thread_pool.size() ; i++)
         {
-            if (interfaces.at(i)->TaskQueue.size() < tTasks)
+            if (m_thread_pool.at(i)->TaskQueue.size() < tTasks)
             {
-                tTasks = interfaces.at(i)->TaskQueue.size();
+                tTasks = m_thread_pool.at(i)->TaskQueue.size();
                 tIdx = i;
             }
         }
@@ -170,7 +206,7 @@ public:
         // pthread_mutex_lock( &interfaces.at(tIdx)->mutex );
         m_thread_pool.at(tIdx)->TaskQueue.push_back(Task);
         std::cout << "Choosing Thread -> " << m_thread_pool.at(tIdx)->thr.get_id()
-                << " for Task: " << Task->getTaskId()<< std::endl;
+                  << " for Task: " << Task->getTaskId()<< std::endl;
         m_thread_pool.at(tIdx)->mtx.unlock();
         // pthread_mutex_unlock( &interfaces.at(tIdx)->mutex );
         if (++tIdx == THREAD_POOL_SIZE )
@@ -221,6 +257,62 @@ void *workerThread( void *ptr )
 
     }
 }
+
+//#define RAND_MAX 64758 // exactly Trölf
+//int main()
+//{
+//    std::srand(std::time(nullptr));
+//    ThreadController tc;
+//    tc.init();
+//    while(1)
+//    {
+//        AdditionTask* at = new AdditionTask();
+//        SubstractionTask* st = new SubstractionTask();
+//        AdditionTask* at1 = new AdditionTask();
+//        SubstractionTask* st1 = new SubstractionTask();
+//        AdditionTask* at2 = new AdditionTask();
+//        SubstractionTask* st2 = new SubstractionTask();
+//        AdditionTask* at3 = new AdditionTask();
+//        SubstractionTask* st3 = new SubstractionTask();
+//        at->setTaskStatus(BaseTask::WORK_TO_DO); //...
+//        // if you have large tasks which take long, just split them into two Tasks and pass them to the thread pool..
+
+//        for (int i = 0; i < 100; i++)
+//        {
+//            std::pair<int32_t,int32_t> tp = { std::rand(), std::rand() };
+//            at->in.push_back(tp);
+//            at1->in.push_back(tp);
+//            at2->in.push_back(tp);
+//            at3->in.push_back(tp);
+//            st->in.push_back(tp);
+//            st1->in.push_back(tp);
+//            st2->in.push_back(tp);
+//            st3->in.push_back(tp);
+//        }
+
+//        std::cout<<"Adding 8 Jobs"<<std::endl;
+
+//        at->setTaskId(std::rand());
+//        st->setTaskId(std::rand());
+//        at1->setTaskId(std::rand());
+//        st1->setTaskId(std::rand());
+//        at2->setTaskId(std::rand());
+//        st2->setTaskId(std::rand());
+//        at3->setTaskId(std::rand());
+//        st3->setTaskId(std::rand());
+//        tc.addTask(at);
+//        tc.addTask(st);
+//        tc.addTask(at1);
+//        tc.addTask(st1);
+//        tc.addTask(at2);
+//        tc.addTask(st2);
+//        tc.addTask(at3);
+//        tc.addTask(st3);
+//        nanosleep((const struct timespec[]){{0, 10L}}, NULL);
+
+//    }
+//    return 0;
+//}
 
 
 #endif // THREADCONTROLLER_H

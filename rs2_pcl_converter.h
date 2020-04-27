@@ -29,14 +29,19 @@
 #include "deviceinterface.h"
 #include "pclinterface.h"
 
+#include "threadcontroller.h"
+
 typedef pcl::PointCloud<pcl::PointXYZ> PointCloud;
 
-class Rs2_PCL_Converter
+class Rs2_PCL_Converter : ThreadController
 {
 private:
-  //  std::vector<rs2_references_t> m_refs_conv_to_RS;
+
+    //  std::vector<rs2_references_t> m_refs_conv_to_RS;
     std::vector<rs2::frame_queue>* m_refs_to_rs2_frames;
     std::vector<shared_references_t> m_refs_conv_to_PCL;
+
+    bool m_active = false;
 
 
     //    std::mutex* m_points_mutex_ref;
@@ -61,7 +66,7 @@ private:
     //    pcl::PointCloud<pcl::PointXYZ>::Ptr current_cloud(pcl::PointCloud<pcl::PointXYZ>::Ptr());
     // m_dev_thread = std::thread(&Rs2Device::captureClient, this);
 
-    void converter_thread_func()
+    void converter_thread_func_old()
     {
         /* To do:
          * Device 0 runs in the first thread, and starts the other additional (2) threads.
@@ -90,71 +95,71 @@ private:
 
             bool wait = true;
 
-//            for (size_t i=0; i < m_refs_to_rs2_frames.size(); i++)
-//            {
-//                if ( *m_refs_to_rs2_frames.at(i).r_idx_ref != *m_refs_to_rs2_frames.at(i).w_idx_ref )
-//                {
-//                    wait = false;
+            //            for (size_t i=0; i < m_refs_to_rs2_frames.size(); i++)
+            //            {
+            //                if ( *m_refs_to_rs2_frames.at(i).r_idx_ref != *m_refs_to_rs2_frames.at(i).w_idx_ref )
+            //                {
+            //                    wait = false;
 
-//                    // Read from device buffer
-//                    m_refs_to_rs2_frames.at(i).mtx_ref->lock();
-//                    rs2::points points = static_cast< rs2::points* >( m_refs_to_rs2_frames.at(i).buf_ref )
-//                            [ *m_refs_to_rs2_frames.at(i).r_idx_ref ];
-//                    *m_refs_to_rs2_frames.at(i).r_idx_ref = *m_refs_to_rs2_frames.at(i).r_idx_ref + 1;
-//                    if (*m_refs_to_rs2_frames.at(i).r_idx_ref == BUF_SIZE_RS2FRAMES-1)
-//                        *m_refs_to_rs2_frames.at(i).r_idx_ref = 0;
-//                    m_refs_to_rs2_frames.at(i).mtx_ref->unlock();
+            //                    // Read from device buffer
+            //                    m_refs_to_rs2_frames.at(i).mtx_ref->lock();
+            //                    rs2::points points = static_cast< rs2::points* >( m_refs_to_rs2_frames.at(i).buf_ref )
+            //                            [ *m_refs_to_rs2_frames.at(i).r_idx_ref ];
+            //                    *m_refs_to_rs2_frames.at(i).r_idx_ref = *m_refs_to_rs2_frames.at(i).r_idx_ref + 1;
+            //                    if (*m_refs_to_rs2_frames.at(i).r_idx_ref == BUF_SIZE_RS2FRAMES-1)
+            //                        *m_refs_to_rs2_frames.at(i).r_idx_ref = 0;
+            //                    m_refs_to_rs2_frames.at(i).mtx_ref->unlock();
 
-//#if (VERBOSE > 1)
-//                    std::cout << "(Converter) Increased read index (" << rs2PositionToString(m_refs_to_rs2_frames.at(i).pos_type)
-//                              << " device): " << *m_refs_to_rs2_frames.at(i).r_idx_ref
-//                              << " size " << points.size() << std::endl;
-//#endif
+            //#if (VERBOSE > 1)
+            //                    std::cout << "(Converter) Increased read index (" << rs2PositionToString(m_refs_to_rs2_frames.at(i).pos_type)
+            //                              << " device): " << *m_refs_to_rs2_frames.at(i).r_idx_ref
+            //                              << " size " << points.size() << std::endl;
+            //#endif
 
-//                    //  points_to_pcl(points, pcl::PointCloud<pcl::PointXYZ>::Ptr(&tmp_pc), i+1);
+            //                    //  points_to_pcl(points, pcl::PointCloud<pcl::PointXYZ>::Ptr(&tmp_pc), i+1);
 
-//                    points_to_pcl(points, tmp_pc, i);
+            //                    points_to_pcl(points, tmp_pc, i);
 
-//#ifdef tmp_commented_out
-//                    // Write to pcl::PointCloud buffer
-//                    m_refs_conv_to_PCL.at(i).mtx_ref->lock();
-//                    static_cast< std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>* >
-//                            (m_refs_conv_to_PCL.at(i).buf_ref)->at( *m_refs_conv_to_PCL.at(i).w_idx_ref ) = tmp_pc;
-//                    *m_refs_conv_to_RS.at(i).w_idx_ref = *m_refs_conv_to_RS.at(i).w_idx_ref + 1;
-//                    if (*m_refs_conv_to_RS.at(i).w_idx_ref == BUF_SIZE_CLOUDS-1)
-//                        *m_refs_conv_to_RS.at(i).w_idx_ref = 0;
-//                    m_refs_conv_to_PCL.at(i).mtx_ref->unlock();
-//#if (VERBOSE > 1)
-//                    std::cout << "(Converter) Increased write index (device " << i << "): " << *m_refs_conv_to_PCL.at(i).w_idx_ref
-//                              << " size " << tmp_pc->size() << std::endl;
-//#endif
+            //#ifdef tmp_commented_out
+            //                    // Write to pcl::PointCloud buffer
+            //                    m_refs_conv_to_PCL.at(i).mtx_ref->lock();
+            //                    static_cast< std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>* >
+            //                            (m_refs_conv_to_PCL.at(i).buf_ref)->at( *m_refs_conv_to_PCL.at(i).w_idx_ref ) = tmp_pc;
+            //                    *m_refs_conv_to_RS.at(i).w_idx_ref = *m_refs_conv_to_RS.at(i).w_idx_ref + 1;
+            //                    if (*m_refs_conv_to_RS.at(i).w_idx_ref == BUF_SIZE_CLOUDS-1)
+            //                        *m_refs_conv_to_RS.at(i).w_idx_ref = 0;
+            //                    m_refs_conv_to_PCL.at(i).mtx_ref->unlock();
+            //#if (VERBOSE > 1)
+            //                    std::cout << "(Converter) Increased write index (device " << i << "): " << *m_refs_conv_to_PCL.at(i).w_idx_ref
+            //                              << " size " << tmp_pc->size() << std::endl;
+            //#endif
 
-//#endif
-
-
-//                    //                m_clouds_buf_ref->at(*m_clouds_write_idx_ref) = point_cloud;
-//                    //                auto cloud_size =  m_clouds_buf_ref->at(*m_clouds_write_idx_ref)->size();
-//                    //                *m_clouds_write_idx_ref = *m_clouds_write_idx_ref + 1;
-//                    //                if (*m_clouds_write_idx_ref == BUF_SIZE_POINTS-1)
-//                    //                    *m_clouds_write_idx_ref = 0;
-//                    //                cout << "(Converter) Increased write index: " << *m_clouds_write_idx_ref << " size " << cloud_size << endl;
+            //#endif
 
 
-
-
-//                    //            m_refs_conv_to_RS.at(i).mtx_ref->lock();
-//                    //            rs2::points points = static_cast<rs2::points*>( m_refs_conv_to_RS.at(i).buf_ref )
-//                    //                    [ *m_refs_conv_to_RS.at(i).r_idx_ref ];
-//                    //            *m_refs_conv_to_RS.at(i).r_idx_ref = *m_refs_conv_to_RS.at(i).r_idx_ref + 1;
-//                    //            if (*m_refs_conv_to_RS.at(i).r_idx_ref == BUF_SIZE_POINTS-1)
-//                    //                *m_refs_conv_to_RS.at(i).r_idx_ref = 0;
-//                    //            m_refs_conv_to_RS.at(i).mtx_ref->unlock();
+            //                    //                m_clouds_buf_ref->at(*m_clouds_write_idx_ref) = point_cloud;
+            //                    //                auto cloud_size =  m_clouds_buf_ref->at(*m_clouds_write_idx_ref)->size();
+            //                    //                *m_clouds_write_idx_ref = *m_clouds_write_idx_ref + 1;
+            //                    //                if (*m_clouds_write_idx_ref == BUF_SIZE_POINTS-1)
+            //                    //                    *m_clouds_write_idx_ref = 0;
+            //                    //                cout << "(Converter) Increased write index: " << *m_clouds_write_idx_ref << " size " << cloud_size << endl;
 
 
 
-//                }
 
-//            }
+            //                    //            m_refs_conv_to_RS.at(i).mtx_ref->lock();
+            //                    //            rs2::points points = static_cast<rs2::points*>( m_refs_conv_to_RS.at(i).buf_ref )
+            //                    //                    [ *m_refs_conv_to_RS.at(i).r_idx_ref ];
+            //                    //            *m_refs_conv_to_RS.at(i).r_idx_ref = *m_refs_conv_to_RS.at(i).r_idx_ref + 1;
+            //                    //            if (*m_refs_conv_to_RS.at(i).r_idx_ref == BUF_SIZE_POINTS-1)
+            //                    //                *m_refs_conv_to_RS.at(i).r_idx_ref = 0;
+            //                    //            m_refs_conv_to_RS.at(i).mtx_ref->unlock();
+
+
+
+            //                }
+
+            //            }
 
             // *point_cloud += *tmp_pc;
 
@@ -293,18 +298,49 @@ private:
     }
 
 
+    void converter_thread_func()
+    {
+        std::cout << "(Converter) started, thread id: " << std::this_thread::get_id() << std::endl;
+        m_active = true;
+        while (m_active) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+
+            for(auto &queue : *m_refs_to_rs2_frames)
+            {
+                rs2::frame tmp;
+                if ( queue.poll_for_frame(&tmp) )
+                {
+                    // task type 1: convert rs2::frame to rs2::points
+
+                    rs2::pointcloud rs2_pc;
+                    rs2_pc.map_to(tmp);
+                    rs2::points rs2_points = rs2_pc.calculate(tmp);
+
+                    // task type 2: convert rs2::points to pcl::pointcloud
+
+                }
+
+            }
+            std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_CONV_POLL_NS));
+        }
+    }
+
+
 
 public:
     Rs2_PCL_Converter(DeviceInterface* in_interface_ref, PclInterface* out_interface_ref , uint32_t device_count)
     //   : m_current_cloud(new pcl::PointCloud<pcl::PointXYZ>(FRAME_WIDTH_RS,FRAME_HEIGHT_RS))
     {
+        m_thread_pool;
         m_rs2_device_count = device_count;
 
-        std::cout << "Created instance of Rs2PclConverter" << std::endl;
+        std::cout << "(Converter) Created instance of Rs2PclConverter" << std::endl;
 
         //m_refs_conv_to_RS = in_interface_ref->get_rs_data_refs();
         m_refs_to_rs2_frames = in_interface_ref->getDepthFrameData();
         m_refs_conv_to_PCL = out_interface_ref->get_pcl_data_refs();
+
+        m_converter_thread = std::thread(&Rs2_PCL_Converter::converter_thread_func, this);
 
         //        m_refs_conv_to_RS.resize(device_count);
         //        for (uint i = 0;i < device_count; i++) {
@@ -331,13 +367,16 @@ public:
     }
 
 
+    bool isActive() { return m_active; }
 
-    void startThread()
-    {
-        if (m_rs2_device_count == 1)
-            m_converter_thread = std::thread(&Rs2_PCL_Converter::converter_thread_func, this);
-        else std::cout << "Multi cam currently not supported";
-    }
+
+
+    //    void startThread()
+    //    {
+    //        if (m_rs2_device_count == 1)
+    //            m_converter_thread = std::thread(&Rs2_PCL_Converter::converter_thread_func, this);
+    //        else std::cout << "Multi cam currently not supported";
+    //    }
 };
 
 

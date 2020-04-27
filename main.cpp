@@ -23,8 +23,10 @@ int main() try
     size_t rs2_device_count = device_interface->connectRealSenseDevices();
     if (rs2_device_count > 0)
     {
-//        pcl_interface = new PclInterface(rs2_device_count);
-//        rs2_pcl_conv = new Rs2_PCL_Converter(device_interface, pcl_interface, rs2_device_count);
+        pcl_interface = new PclInterface(rs2_device_count);
+        rs2_pcl_conv = new Rs2_PCL_Converter(device_interface, pcl_interface, rs2_device_count);
+        rs2_pcl_conv->init(); // todo implement as virtual
+      //  ThreadController::init();
 //        rs2_pcl_conv->startThread();
 //        pcl_interface->startThread();
     }

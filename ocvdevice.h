@@ -81,7 +81,7 @@ private:
     //    std::chrono::time_point<std::chrono::_V2::steady_clock> m_start_time_tra;
     //#endif
 
-    void capture_thread_func()
+    void cv_capture_thread_func()
     {
         std::cout << "OpenCV capture thread started # " << std::this_thread::get_id() << " device: " << m_cam_idx << std::endl;
         cv::Mat input, image, gray;
@@ -693,7 +693,7 @@ public:
         m_vel_y.reserve(BUF_SIZE_VEL);
 
         // Start capturing, which starts the following threads
-        m_capture_thread = std::thread(&OcvDevice::capture_thread_func, this);
+        m_capture_thread = std::thread(&OcvDevice::cv_capture_thread_func, this);
 
     }
 

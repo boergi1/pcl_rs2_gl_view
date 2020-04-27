@@ -131,17 +131,17 @@ public:
 class ThreadController
 {
 private:
-    std::vector<ThreadInterface*> thread_pool;
+    std::vector<ThreadInterface*> m_thread_pool;
 public:
 
     void init()
     {
         for (int i = 0; i<THREAD_POOL_SIZE; i++)
         {
-            thread_pool.push_back(new ThreadInterface());
+            m_thread_pool.push_back(new ThreadInterface());
             // interfaces.back()->mutex = PTHREAD_MUTEX_INITIALIZER;
             // pthread_create( &interfaces.back()->id, NULL, workerThread, (void*)interfaces.back() );
-            thread_pool.back()->thr = std::thread(workerThread, static_cast<void*>(thread_pool.back()));
+            m_thread_pool.back()->thr = std::thread(workerThread, static_cast<void*>(m_thread_pool.back()));
             // nanosleep((const struct timespec[]){{0, 1000000L}}, NULL);
             std::this_thread::sleep_for(std::chrono::nanoseconds(1000000));
 
@@ -166,12 +166,12 @@ public:
 #else
         static int32_t tIdx = 0;
 #endif
-        thread_pool.at(tIdx)->mtx.lock();
+        m_thread_pool.at(tIdx)->mtx.lock();
         // pthread_mutex_lock( &interfaces.at(tIdx)->mutex );
-        thread_pool.at(tIdx)->TaskQueue.push_back(Task);
-        std::cout << "Choosing Thread -> " << thread_pool.at(tIdx)->thr.get_id()
+        m_thread_pool.at(tIdx)->TaskQueue.push_back(Task);
+        std::cout << "Choosing Thread -> " << m_thread_pool.at(tIdx)->thr.get_id()
                 << " for Task: " << Task->getTaskId()<< std::endl;
-        thread_pool.at(tIdx)->mtx.unlock();
+        m_thread_pool.at(tIdx)->mtx.unlock();
         // pthread_mutex_unlock( &interfaces.at(tIdx)->mutex );
         if (++tIdx == THREAD_POOL_SIZE )
             tIdx = 0;

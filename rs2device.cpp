@@ -53,13 +53,14 @@ void Rs2Device::print_device_information(const rs2::device &dev)
     }
 }
 
-void Rs2Device::capture_thread_func()
+void Rs2Device::rs2_capture_thread_func()
 {
     std::string serial = m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
     std::cout << "(Rs2Device) Capture thread started: #" << serial << " threadID: " << std::this_thread::get_id() << std::endl;
 
 #if (RS_MASTER_SLAVE_CONFIG == 1)
     auto advanced_dev = m_rs2_dev.as<rs400::advanced_mode>();
+
     auto advanced_sensors = advanced_dev.query_sensors();
 
     bool depth_found = false;
@@ -76,7 +77,6 @@ void Rs2Device::capture_thread_func()
             color_found = true;
         }
     }
-
 
     if (depth_found)
     {
@@ -100,11 +100,11 @@ void Rs2Device::capture_thread_func()
     // RGB sync doesn't work, need to use depth as master.
     if (m_rs2_dev_id == 0) {
         depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 1);
-        std::cout << "(Rs2Device) Camera " << getPositionType() << " #" << serial << " set to MASTER (val="
+        std::cout << "(Rs2Device) Camera " << getPositionTypeStr() << " #" << serial << " set to MASTER (val="
                   << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE) << ")" << std::endl;
     } else {
         depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 2);
-        std::cout << "(Rs2Device) Camera " << getPositionType() << " #" << serial << " set to SLAVE (val="
+        std::cout << "(Rs2Device) Camera " << getPositionTypeStr() << " #" << serial << " set to SLAVE (val="
                   << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE) << ")" << std::endl;
     }
 #endif
@@ -145,16 +145,20 @@ void Rs2Device::capture_thread_func()
     }
 #endif
 
-    double last_time = 0;
     m_capture_running = true;
     while (m_capture_running) {
         rs2::frameset frames = rs2_pipe.wait_for_frames();
+
+        auto cap_start = std::chrono::high_resolution_clock::now();
+
         // rs2::frame color_frame = frames.get_color_frame();
         rs2::frame depth_frame = frames.get_depth_frame();
+        double drift = depth_frame.get_timestamp() - m_last_frame_time;
+        m_last_frame_time = depth_frame.get_timestamp();
 
-        last_time = depth_frame.get_timestamp();
+
 #if (VERBOSE > 2)
-        double drift = depth_frame.get_timestamp() - last_time;        
+
         std::cout << frames.size() << " frame(s) from #" << serial << ": ";
         std::cout.precision(std::numeric_limits<double>::max_digits10);
         std::cout << "Drift: " << drift << ", ";
@@ -179,35 +183,62 @@ void Rs2Device::capture_thread_func()
             std::cout << "Unknown ";
             break;
         }
-        std::cout << "TS: " << last_time << " (" << depth_frame.get_frame_number() << ")" << std::endl;
+        std::cout << "TS: " << m_last_frame_time << " (" << depth_frame.get_frame_number() << "), size: " << depth_frame.get_data_size() << std::endl;
+
+
+
+//        const rs2_frame* frame_handle = depth_frame.get();
+//        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr) )
+//        {
+//            rs2_metadata_type frame_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr);
+//            std::cout << "DEBUG RS2_FRAME_METADATA_FRAME_TIMESTAMP " << frame_ts_meta << std::endl;
+//        }
+//        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr) )
+//        {
+//            rs2_metadata_type sensor_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr);
+//            std::cout << "DEBUG RS2_FRAME_METADATA_SENSOR_TIMESTAMP " << sensor_ts_meta << std::endl;
+//        }
+//        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr) )
+//        {
+//            rs2_metadata_type arrival_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr);
+//            std::cout << "DEBUG RS2_FRAME_METADATA_TIME_OF_ARRIVAL " << arrival_ts_meta << std::endl;
+//        }
+//        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr) )
+//        {
+//            rs2_metadata_type backend_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr);
+//            std::cout << "DEBUG RS2_FRAME_METADATA_BACKEND_TIMESTAMP " << backend_ts_meta << std::endl;
+//        }
+
 #endif
+        // Filters
+        m_dec_filter.process(depth_frame);
+        m_thr_filter.process(depth_frame);
+        m_spat_filter.process(depth_frame);
+
+        m_frame_queue.enqueue(depth_frame);
 
 
 
-        m_ref_RS_to_interface.mtx_ref->lock();
-        static_cast<rs2::frame*>( m_ref_RS_to_interface.buf_ref )[ *m_ref_RS_to_interface.w_idx_ref ] = depth_frame;
-        *m_ref_RS_to_interface.w_idx_ref = *m_ref_RS_to_interface.w_idx_ref + 1;
-        std::cout << "(Rs2Device " << getPositionType() << ") Increased write index: " << *m_ref_RS_to_interface.w_idx_ref
-                  << " size " << depth_frame.get_data_size() << std::endl;
-        if (*m_ref_RS_to_interface.w_idx_ref == BUF_SIZE_RS2FRAMES-1)
-            *m_ref_RS_to_interface.w_idx_ref = 0;
-        m_ref_RS_to_interface.mtx_ref->unlock();
-
-        //            m_mutex_ref->lock();
-        //            m_rs2_points_buf_ref[*m_points_write_idx_ref] = m_curr_rs2_points_cpu;
-        //            *m_points_write_idx_ref = *m_points_write_idx_ref + 1;
-        //            std::cout << "(Frames) Increased write index (cpu): " << *m_points_write_idx_ref << " size " << m_curr_rs2_points_cpu.size() << std::endl;
-        //            if (*m_points_write_idx_ref == BUF_SIZE_POINTS-1)
-        //                *m_points_write_idx_ref = 0;
-        //            m_mutex_ref->unlock();
-
-        //            // With callbacks, all synchronized stream will arrive in a single frameset
-        //            for (const rs2::frame& f : fs)
-        //            {
-        //               // counters[f.get_profile().unique_id()]++;
-        //            }1
 
 
+        //        m_ref_RS_to_interface.mtx_ref->lock();
+        //        static_cast<rs2::frame*>( m_ref_RS_to_interface.buf_ref )[ *m_ref_RS_to_interface.w_idx_ref ] = depth_frame;
+        //        *m_ref_RS_to_interface.w_idx_ref = *m_ref_RS_to_interface.w_idx_ref + 1;
+        //        std::cout << "(Rs2Device " << getPositionTypeStr() << ") Increased write index: " << *m_ref_RS_to_interface.w_idx_ref
+        //                  << " size " << depth_frame.get_data_size() << std::endl;
+        //        if (*m_ref_RS_to_interface.w_idx_ref == BUF_SIZE_RS2FRAMES-1)
+        //            *m_ref_RS_to_interface.w_idx_ref = 0;
+        //        m_ref_RS_to_interface.mtx_ref->unlock();
+
+
+
+
+        auto cap_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-cap_start).count();
+        if (cap_end >= drift)
+            std::cerr << "(Rs2Device) Processing takes longer than capturing" << std::endl;
+#if (VERBOSE > 2)
+        std::cout << "(Rs2Device) " << getPositionTypeStr() << " capture took " << cap_end << " ms" << std::endl;
+#endif
     }
 
     rs2_pipe.stop();
@@ -217,12 +248,12 @@ void Rs2Device::capture_thread_func()
 
 void Rs2Device::setCaptureEnabled(bool running)
 {    
-    std::cout << std::endl << "DEBUG setCaptureEnabled start " << getPositionType() << std::endl << std::endl;
+    std::cout << std::endl << "DEBUG setCaptureEnabled start " << getPositionTypeStr() << std::endl << std::endl;
     std::string serial = m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
     if (running)
     {
-        std::cout << "(Rs2Device) Enabling capture of " << getPositionType() << " #" << serial << std::endl;
-        m_capture_thread = std::thread(&Rs2Device::capture_thread_func, this);
+        std::cout << "(Rs2Device) Enabling capture of " << getPositionTypeStr() << " #" << serial << std::endl;
+        m_capture_thread = std::thread(&Rs2Device::rs2_capture_thread_func, this);
 
         //#if (RS_MASTER_SLAVE_CONFIG == 1)
         //        auto advanced_dev = m_rs2_dev.as<rs400::advanced_mode>();
@@ -272,7 +303,7 @@ void Rs2Device::setCaptureEnabled(bool running)
 
     }
     else {
-        std::cout << "(Rs2Device) Disabling capture of " << getPositionType() << " #" << serial << std::endl;
+        std::cout << "(Rs2Device) Disabling capture of " << getPositionTypeStr() << " #" << serial << std::endl;
         m_capture_running = false;
         m_capture_thread.join();
     }
@@ -325,18 +356,19 @@ void Rs2Device::setCaptureEnabled(bool running)
 
 
 
-    std::cout << std::endl << "DEBUG setCaptureEnabled end " << getPositionType() << std::endl << std::endl;
+    std::cout << std::endl << "DEBUG setCaptureEnabled end " << getPositionTypeStr() << std::endl << std::endl;
 }
 
 bool Rs2Device::isActive() { return m_active; }
 
-Rs2Device::Rs2Device(rs2::device &dev, size_t dev_id, rs2_references_t data_ref)
+Rs2Device::Rs2Device(rs2::device &dev, size_t dev_id, Rs2Position_t pos_id, rs2::frame_queue &framebuf)
 {
-
-    m_ref_RS_to_interface = data_ref;
     m_rs2_dev = dev;
     m_rs2_dev_id = dev_id;
-    std::cout << "New Realsense device, type: "<< getPositionType() << " #" << m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
+    m_pos_id = pos_id;
+    m_frame_queue = framebuf;
+    std::cout << "New Realsense device, type: "<< getPositionTypeStr() << " #" << m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
+    // m_ref_RS_to_interface = pos_id;
     // print_device_information(m_rs2_dev);
 
 

@@ -22,14 +22,10 @@ private:
     rs2::context m_ctx;
 
     std::vector<Rs2Device *> m_rs2_devices;
-    std::vector<rs2::pipeline> m_rs2_pipelines;
 
+    //  std::vector<rs2_references_t> m_RS_data;
 
-    //  std::vector<std::mutex *> m_rs2_dev_mtxs;
-    //  std::vector<size_t> m_points_write_indexes;
-    //  std::vector<size_t> m_points_read_indexes;
-
-    std::vector<rs2_references_t> m_RS_data;
+    std::vector<rs2::frame_queue> m_depth_frames;
 
 
 
@@ -89,19 +85,20 @@ public:
             m_rs2_devices.pop_back();
         }
 
-        while (m_RS_data.size()) {
-            std::cout << "(DeviceInterface) Freeing memory of shared references: " << m_RS_data.size() << std::endl;
-            delete[] static_cast<rs2::points*>( m_RS_data.back().buf_ref );
-            delete m_RS_data.back().mtx_ref;
-            delete m_RS_data.back().w_idx_ref;
-            delete m_RS_data.back().r_idx_ref;
-            m_RS_data.back().buf_ref = nullptr;
-            m_RS_data.back().mtx_ref = nullptr;
-            m_RS_data.back().w_idx_ref = nullptr;
-            m_RS_data.back().r_idx_ref = nullptr;
-            m_RS_data.pop_back();
-        }
+        //        while (m_RS_data.size()) {
+        //            std::cout << "(DeviceInterface) Freeing memory of shared references: " << m_RS_data.size() << std::endl;
+        //            delete[] static_cast<rs2::points*>( m_RS_data.back().buf_ref );
+        //            delete m_RS_data.back().mtx_ref;
+        //            delete m_RS_data.back().w_idx_ref;
+        //            delete m_RS_data.back().r_idx_ref;
+        //            m_RS_data.back().buf_ref = nullptr;
+        //            m_RS_data.back().mtx_ref = nullptr;
+        //            m_RS_data.back().w_idx_ref = nullptr;
+        //            m_RS_data.back().r_idx_ref = nullptr;
+        //            m_RS_data.pop_back();
+        //        }
     }
+
 
     std::string getRs2DeviceSerialNum(const rs2::device &dev)
     {
@@ -111,31 +108,17 @@ public:
         return sn;
     }
 
-    std::vector<rs2_references_t> get_rs_data_refs()
+    std::vector<rs2::frame_queue>* getDepthFrameData()
     {
-        return m_RS_data;
+        return &m_depth_frames;
     }
 
-
-
-    //    std::mutex* getPointsBufferMutex(size_t i)
+    //    std::vector<rs2_references_t> get_rs_data_refs()
     //    {
-    //        return m_rs2_dev_mtxs[i];
+    //        return m_RS_data;
     //    }
 
-    //    rs2::points* getPointsBufferRef(size_t i)
-    //    {
-    //        return m_rs2_points_buffers[i];
-    //    }
 
-    //    size_t& getPointsWriteIndexRef(size_t i)
-    //    {
-    //        return  m_points_write_indexes[i];
-    //    }
-    //    size_t& getPointsReadIndexRef(size_t i)
-    //    {
-    //        return  m_points_read_indexes[i];
-    //    }
 
 };
 

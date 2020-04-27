@@ -55,18 +55,18 @@ typedef struct shared_references_s
     }
 } shared_references_t;
 
-typedef struct rs2_references_s : shared_references_t
-{
-    Rs2Position_t pos_type;
-    rs2_references_s()
-    {
-        buf_ref = nullptr; mtx_ref = nullptr; w_idx_ref = nullptr; r_idx_ref = nullptr;
-    }
-    rs2_references_s(void* buf, std::mutex* mtx, size_t* w, size_t* r, Rs2Position_t pos)
-    {
-        buf_ref = buf; mtx_ref = mtx; w_idx_ref = w; r_idx_ref = r; pos_type = pos;
-    }
-} rs2_references_t;
+//typedef struct rs2_references_s : shared_references_t
+//{
+//    Rs2Position_t pos_type;
+//    rs2_references_s()
+//    {
+//        buf_ref = nullptr; mtx_ref = nullptr; w_idx_ref = nullptr; r_idx_ref = nullptr;
+//    }
+//    rs2_references_s(void* buf, std::mutex* mtx, size_t* w, size_t* r, Rs2Position_t pos)
+//    {
+//        buf_ref = buf; mtx_ref = mtx; w_idx_ref = w; r_idx_ref = r; pos_type = pos;
+//    }
+//} rs2_references_t;
 
 
 

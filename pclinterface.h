@@ -34,15 +34,50 @@
 #include <mutex>
 #include <chrono>
 
+class CloudDeque
+{
+public:
+    CloudDeque(){
+    }
+    void addCloudT(std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, double, unsigned long long> cloud_tuple)
+    {
+        m_mtx.lock();
+        m_queue.push_back(cloud_tuple);
+        m_mtx.unlock();
+    }
+    std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, double, unsigned long long> getCloudT()
+    {
+        if (m_queue.size())
+        {
+            m_mtx.lock();
+            auto tmp_ptr = m_queue.front();
+            m_queue.pop_front();
+            m_mtx.unlock();
+            return tmp_ptr;
+        }
+        else
+        {
+            std::cerr << "(CloudDeque) is empty" << std::endl;
+            return std::make_tuple(nullptr, NULL, NULL);
+        }
+    }
+private:
+    std::deque<std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, double, unsigned long long>>  m_queue;
+    std::mutex m_mtx;
+};
+
 class PclInterface
 {
 private:
+    bool m_active;
     std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> m_clouds_buffer;
     pcl::PointCloud<pcl::PointXYZ>::Ptr m_proc_cloud = nullptr; // todo mutex this
     pcl::PointCloud<pcl::PointXYZ>::Ptr m_filtered_cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr
             (new pcl::PointCloud<pcl::PointXYZ>);
 
     std::vector<shared_references_t> m_PCL_data;
+
+    std::vector<CloudDeque*> m_input_clouds;
 
     size_t m_clouds_write_idx = 0;
     size_t m_clouds_read_idx = 0;
@@ -56,7 +91,9 @@ private:
 
     bool m_running = true;
 
+#if (PCL_VIEWER == 1)
     pcl::visualization::CloudViewer m_pcl_viewer;
+#endif
 
     void pc_proc_thread_func()
     {
@@ -135,21 +172,35 @@ private:
     }
 
 public:
-    PclInterface(uint32_t device_count) : m_pcl_viewer("Cloud Viewer")
+    PclInterface(int device_count)
+#if (PCL_VIEWER == 1)
+        : m_pcl_viewer("Cloud Viewer")
+    #endif
     {
-        m_clouds_buf_step = device_count;
+        for (int i = 0; i < device_count; i++)
+            m_input_clouds.push_back(new CloudDeque);
 
-        m_PCL_data.clear();
-        m_PCL_data.resize(device_count);
 
-        for (uint32_t i=0; i < device_count; i++)
-        {
-            m_PCL_data.at(i).buf_ref = new std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>(BUF_SIZE_CLOUDS);
-            m_PCL_data.at(i).mtx_ref = new std::mutex();
-            m_PCL_data.at(i).w_idx_ref = new size_t(0);
-            m_PCL_data.at(i).r_idx_ref = new size_t(0);
-        }
+//        m_clouds_buf_step = device_count;
 
+//        m_PCL_data.clear();
+//        m_PCL_data.resize(device_count);
+
+//        for (uint32_t i=0; i < device_count; i++)
+//        {
+//            m_PCL_data.at(i).buf_ref = new std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>(BUF_SIZE_CLOUDS);
+//            m_PCL_data.at(i).mtx_ref = new std::mutex();
+//            m_PCL_data.at(i).w_idx_ref = new size_t(0);
+//            m_PCL_data.at(i).r_idx_ref = new size_t(0);
+//        }
+
+    }
+
+
+
+    std::vector<CloudDeque*>* getInputCloudsRef()
+    {
+        return &m_input_clouds;
     }
 
     std::function<void (pcl::visualization::PCLVisualizer&)> viewer_callback = [](pcl::visualization::PCLVisualizer& viewer)
@@ -203,40 +254,66 @@ public:
         if (m_clouds_buf_step > 0)
             m_pc_proc_thread = std::thread(&PclInterface::pc_proc_thread_func, this);
         else std::cout << "PC thread not started" << std::endl;
-#if (PCL_VIEWER > 0)
-        m_pcl_viewer.runOnVisualizationThreadOnce (viewer_callback);
-        m_pcl_viewer.runOnVisualizationThread (viewer_update_callback);
+
+    }
+
+    void setActive(bool running)
+    {
+        if (running)
+        {
+            if ( m_pc_proc_thread.joinable() )
+            {
+                std::cerr << "(Converter) Thread already running: " << m_pc_proc_thread.get_id() << std::endl;
+                return;
+            }
+            m_active = true;
+            m_pc_proc_thread = std::thread(&PclInterface::pc_proc_thread_func, this);
+#if (PCL_VIEWER == 1)
+            m_pcl_viewer.runOnVisualizationThreadOnce (viewer_callback);
+            m_pcl_viewer.runOnVisualizationThread (viewer_update_callback, "ViewerCallback");
 #endif
 
-        //        while (!m_pcl_viewer.wasStopped ())
-        //        {
-        //            //  std::chrono::steady_clock::now();
-        //            std::cout << "PCL viewer main" << std::endl;
-        //            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        //        }
+            //        while (!m_pcl_viewer.wasStopped ())
+            //        {
+            //            //  std::chrono::steady_clock::now();
+            //            std::cout << "PCL viewer main" << std::endl;
+            //            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            //        }
+        }
+        else
+        {
+            m_pcl_viewer.removeVisualizationCallable("ViewerCallback");
+            m_active = false;
+            if ( m_pc_proc_thread.joinable() )
+                m_pc_proc_thread.join();
+            else std::cerr << "(Converter) Thread not joinable: " << m_pc_proc_thread.get_id() << std::endl;
+        }
+        return;
     }
+
+    bool isActive() { return m_active; }
 
     std::vector<shared_references_t> get_pcl_data_refs()
     {
         return m_PCL_data;
     }
 
-//    std::mutex* getCloudsBufferMutex()
-//    {
-//        return m_pcl_cvt_mtx;
-//    }
-//    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>* getCloudsBufferRef()
-//    {
-//        return &m_clouds_buffer;
-//    }
-//    size_t& getCloudsWriteIndexRef()
-//    {
-//        return  m_clouds_write_idx;
-//    }
-//    size_t& getCloudsReadIndexRef()
-//    {
-//        return  m_clouds_read_idx;
-//    }
+    //    std::mutex* getCloudsBufferMutex()
+    //    {
+    //        return m_pcl_cvt_mtx;
+    //    }
+    //    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>* getCloudsBufferRef()
+    //    {
+    //        return &m_clouds_buffer;
+    //    }
+    //    size_t& getCloudsWriteIndexRef()
+    //    {
+    //        return  m_clouds_write_idx;
+    //    }
+    //    size_t& getCloudsReadIndexRef()
+    //    {
+    //        return  m_clouds_read_idx;
+    //    }
 
 
 };

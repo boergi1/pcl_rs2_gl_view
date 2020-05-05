@@ -19,7 +19,7 @@ size_t DeviceInterface::connectRealSenseDevices()
 
     for (auto&& dev : m_ctx.query_devices())
     {
-        Rs2Position_t pos_id;
+        CamPosition_t pos_id;
         std::string serial_num = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
 
         // test usb connection
@@ -41,19 +41,19 @@ size_t DeviceInterface::connectRealSenseDevices()
 
         // get position by serial number
         if (serial_num == RS0_CENTRAL_SERIAL)
-            pos_id = Rs2Position_t::CENTRAL;
+            pos_id = CamPosition_t::CENTRAL;
         else if (serial_num == RS1_FRONT_SERIAL)
-            pos_id = Rs2Position_t::FRONT;
+            pos_id = CamPosition_t::FRONT;
         else if (serial_num == RS2_REAR_SERIAL)
-            pos_id = Rs2Position_t::REAR;
+            pos_id = CamPosition_t::REAR;
         else
         {
             std::cerr << "(DeviceInterface) No matching RS2 serial number: " << serial_num << std::endl;
-            pos_id = Rs2Position_t::OTHER;
+            pos_id = CamPosition_t::OTHER;
             //continue;
         }
         
-        m_depth_frames.push_back(rs2::frame_queue(BUF_SIZE_RS2FRAMES, true));
+        m_depth_frames.push_back(rs2::frame_queue(QUE_SIZE_RS2FRAMES, true));
 
         m_rs2_devices.push_back(new Rs2Device( dev, device_id, pos_id, m_depth_frames.back()));
         
@@ -77,7 +77,7 @@ size_t DeviceInterface::connectRealSenseDevices()
             device_id--;
             std::cerr << "(DeviceInterface) Rs2Device not active: " << (*iter)->getPositionTypeStr() << std::endl;
         }
-        else (*iter)->setRecordingEnabled(true);
+      //  else (*iter)->setRecordingEnabled(true);
         ++iter;
     }
 

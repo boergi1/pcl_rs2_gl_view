@@ -24,8 +24,12 @@ int main() try
     if (rs2_device_count > 0)
     {
         pcl_interface = new PclInterface(rs2_device_count);
-        rs2_pcl_conv = new Rs2_PCL_Converter(device_interface, pcl_interface, rs2_device_count);
-        rs2_pcl_conv->init(); // todo implement as virtual
+        rs2_pcl_conv = new Rs2_PCL_Converter(device_interface, pcl_interface);
+        rs2_pcl_conv->init(); // start multiple workerthreads
+
+        device_interface->startRecordingRs2Devices();
+        rs2_pcl_conv->setActive(true);
+
       //  ThreadController::init();
 //        rs2_pcl_conv->startThread();
 //        pcl_interface->startThread();

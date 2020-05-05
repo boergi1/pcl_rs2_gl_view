@@ -37,7 +37,7 @@ typedef enum
     FRONT,
     REAR,
     OTHER
-} Rs2Position_t;
+} CamPosition_t;
 
 typedef struct shared_references_s
 {
@@ -74,7 +74,7 @@ typedef struct shared_references_s
 
 
 // helper functions
-std::string rs2PositionToString(Rs2Position_t pos);
+std::string rs2PositionToString(CamPosition_t pos);
 
 int roundToInt(double val);
 

@@ -156,74 +156,72 @@ void Rs2Device::rs2_capture_thread_func()
         double drift = depth_frame.get_timestamp() - m_last_frame_time;
         m_last_frame_time = depth_frame.get_timestamp();
 
-
-#if (VERBOSE > 2)
-
-        std::cout << frames.size() << " frame(s) from #" << serial << ": ";
-        std::cout.precision(std::numeric_limits<double>::max_digits10);
-        std::cout << "Drift: " << drift << ", ";
-        switch(depth_frame.get_frame_timestamp_domain()) {
-        case (RS2_TIMESTAMP_DOMAIN_HARDWARE_CLOCK):
-            // Frame timestamp was measured in relation to the camera clock
-            std::cout << "Hardware Clock ";
-            break;
-        case (RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME):
-            // Frame timestamp was measured in relation to the OS system clock
-            std::cout << "System Time ";
-            break;
-        case (RS2_TIMESTAMP_DOMAIN_GLOBAL_TIME):
-            // Frame timestamp was measured in relation to the camera clock and converted to OS system clock by constantly measure the difference
-            std::cout << "Global Time ";
-            break;
-        case (RS2_TIMESTAMP_DOMAIN_COUNT):
-            // Number of enumeration values. Not a valid input: intended to be used in for-loops.
-            std::cout << "Domain Count ";
-            break;
-        default:
-            std::cout << "Unknown ";
-            break;
-        }
-        std::cout << "TS: " << m_last_frame_time << " (" << depth_frame.get_frame_number() << "), size: " << depth_frame.get_data_size() << std::endl;
-
-
-
-        //        const rs2_frame* frame_handle = depth_frame.get();
-        //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr) )
-        //        {
-        //            rs2_metadata_type frame_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr);
-        //            std::cout << "DEBUG RS2_FRAME_METADATA_FRAME_TIMESTAMP " << frame_ts_meta << std::endl;
-        //        }
-        //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr) )
-        //        {
-        //            rs2_metadata_type sensor_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr);
-        //            std::cout << "DEBUG RS2_FRAME_METADATA_SENSOR_TIMESTAMP " << sensor_ts_meta << std::endl;
-        //        }
-        //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr) )
-        //        {
-        //            rs2_metadata_type arrival_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr);
-        //            std::cout << "DEBUG RS2_FRAME_METADATA_TIME_OF_ARRIVAL " << arrival_ts_meta << std::endl;
-        //        }
-        //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr) )
-        //        {
-        //            rs2_metadata_type backend_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr);
-        //            std::cout << "DEBUG RS2_FRAME_METADATA_BACKEND_TIMESTAMP " << backend_ts_meta << std::endl;
-        //        }
-
-#endif
         if (m_recording)
         {
+#if (RS_FILTER == 1)
             // filter
             m_dec_filter.process(depth_frame);
             m_thr_filter.process(depth_frame);
             m_spat_filter.process(depth_frame);
+#endif
             // enqueue
             m_frame_queue.enqueue(depth_frame);
+#if (VERBOSE > 2)
+            std::cout << "(Rs2Device) " << frames.size() << " frame(s) from #" << serial << ": ";
+            std::cout.precision(std::numeric_limits<double>::max_digits10);
+            std::cout << "Drift: " << drift << ", ";
+            switch(depth_frame.get_frame_timestamp_domain()) {
+            case (RS2_TIMESTAMP_DOMAIN_HARDWARE_CLOCK):
+                // Frame timestamp was measured in relation to the camera clock
+                std::cout << "Hardware Clock ";
+                break;
+            case (RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME):
+                // Frame timestamp was measured in relation to the OS system clock
+                std::cout << "System Time ";
+                break;
+            case (RS2_TIMESTAMP_DOMAIN_GLOBAL_TIME):
+                // Frame timestamp was measured in relation to the camera clock and converted to OS system clock by constantly measure the difference
+                std::cout << "Global Time ";
+                break;
+            case (RS2_TIMESTAMP_DOMAIN_COUNT):
+                // Number of enumeration values. Not a valid input: intended to be used in for-loops.
+                std::cout << "Domain Count ";
+                break;
+            default:
+                std::cout << "Unknown ";
+                break;
+            }
+            rs2::points testp;
+            std::cout << "TS: " << m_last_frame_time << " (" << depth_frame.get_frame_number() << "), size: " << depth_frame.get_data_size() << " bytes" << std::endl;
+            //        const rs2_frame* frame_handle = depth_frame.get();
+            //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr) )
+            //        {
+            //            rs2_metadata_type frame_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr);
+            //            std::cout << "DEBUG RS2_FRAME_METADATA_FRAME_TIMESTAMP " << frame_ts_meta << std::endl;
+            //        }
+            //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr) )
+            //        {
+            //            rs2_metadata_type sensor_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr);
+            //            std::cout << "DEBUG RS2_FRAME_METADATA_SENSOR_TIMESTAMP " << sensor_ts_meta << std::endl;
+            //        }
+            //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr) )
+            //        {
+            //            rs2_metadata_type arrival_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr);
+            //            std::cout << "DEBUG RS2_FRAME_METADATA_TIME_OF_ARRIVAL " << arrival_ts_meta << std::endl;
+            //        }
+            //        if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr) )
+            //        {
+            //            rs2_metadata_type backend_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr);
+            //            std::cout << "DEBUG RS2_FRAME_METADATA_BACKEND_TIMESTAMP " << backend_ts_meta << std::endl;
+            //        }
+            auto cap_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-cap_start).count();
+            if (cap_end >= drift)
+                std::cerr << "(Rs2Device) Processing takes longer than capturing" << std::endl;
+#if (VERBOSE > 2)
+            std::cout << "(Rs2Device) " << getPositionTypeStr() << " capture took " << cap_end << " ms" << std::endl;
+#endif
+#endif
         }
-
-
-
-
-
         //        m_ref_RS_to_interface.mtx_ref->lock();
         //        static_cast<rs2::frame*>( m_ref_RS_to_interface.buf_ref )[ *m_ref_RS_to_interface.w_idx_ref ] = depth_frame;
         //        *m_ref_RS_to_interface.w_idx_ref = *m_ref_RS_to_interface.w_idx_ref + 1;
@@ -232,16 +230,6 @@ void Rs2Device::rs2_capture_thread_func()
         //        if (*m_ref_RS_to_interface.w_idx_ref == BUF_SIZE_RS2FRAMES-1)
         //            *m_ref_RS_to_interface.w_idx_ref = 0;
         //        m_ref_RS_to_interface.mtx_ref->unlock();
-
-
-
-
-        auto cap_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-cap_start).count();
-        if (cap_end >= drift)
-            std::cerr << "(Rs2Device) Processing takes longer than capturing" << std::endl;
-#if (VERBOSE > 2)
-        std::cout << "(Rs2Device) " << getPositionTypeStr() << " capture took " << cap_end << " ms" << std::endl;
-#endif
     }
 
     rs2_pipe.stop();
@@ -359,7 +347,7 @@ void Rs2Device::setCaptureEnabled(bool running)
 
 bool Rs2Device::isActive() { return m_active; }
 
-Rs2Device::Rs2Device(rs2::device &dev, size_t dev_id, Rs2Position_t pos_id, rs2::frame_queue &framebuf)
+Rs2Device::Rs2Device(rs2::device &dev, size_t dev_id, CamPosition_t pos_id, rs2::frame_queue &framebuf)
 {
     m_rs2_dev = dev;
     m_rs2_dev_id = dev_id;

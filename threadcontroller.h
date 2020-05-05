@@ -23,18 +23,13 @@ void *workerThread( void *ptr );
 class BaseTask
 {
 private:
-    int taskId;
-    int taskStatus;
+    int m_taskType;
+    int m_taskId;
+    int m_taskStatus;
 
 public:
-    BaseTask()
-    {
-        this->taskStatus = TASK_EMPTY;
-    }
-    virtual ~BaseTask()
-    {
-
-    }
+    BaseTask();
+    virtual ~BaseTask();
 
     virtual void process() = 0;
 
@@ -45,69 +40,22 @@ public:
         TASK_EMPTY
     } TaskStatus_t;
 
-    int getTaskId() const { return taskId;  }
-    void setTaskId(int value) { this->taskId = value;  }
-    int getTaskStatus() const { return taskStatus; }
-    void setTaskStatus(int value) { this->taskStatus = value; }
+    int getTaskType() { return m_taskType; }
+    void setTaskType(int taskType) { m_taskType = taskType; }
+    int getTaskId() const;
+    void setTaskId(int value);
+    int getTaskStatus() const;
+    void setTaskStatus(int value);
 };
-
-
-class AdditionTask : public BaseTask
-{
-public:
-    AdditionTask()
-    {
-
-    }
-    std::deque<std::pair<int32_t,int32_t>> in;
-    std::vector<int> out;
-
-    void process() override
-    {
-        std::cout<<"Process Addition"<<std::endl;
-
-        int i = 0;
-        out.resize(in.size());
-        while (in.size())
-        {
-            std::pair<int32_t,int32_t> tmp = in.front();
-            in.pop_front();
-            out[i++] = tmp.first + tmp.second;
-        }
-        this->setTaskStatus(TASK_DONE);
-    }
-};
-
-class SubstractionTask : public BaseTask
-{
-public:
-    SubstractionTask()
-    {
-
-    }
-
-    std::deque<std::pair<int32_t,int32_t>> in;
-    std::vector<int> out;
-
-    void process() override
-    {
-        std::cout<<"Process Substract"<<std::endl;
-        int i = 0;
-        out.resize(in.size());
-        while (in.size())
-        {
-            std::pair<int32_t,int32_t> tmp = in.front();
-            in.pop_front();
-            out[i++] =tmp.first - tmp.second;
-        }
-        this->setTaskStatus(TASK_DONE);
-    }
-};
-
 
 class ThreadInterface
 {
+private:
+    ThreadController* m_ref_to_controller;
 public:
+    ThreadInterface(ThreadController* parent);
+
+    void addOutput(BaseTask* task);
     std::thread thr;
     std::mutex mtx;
 
@@ -118,145 +66,56 @@ public:
     //    add a container with a new mutex (to the threadcontroller), and collect all
     //    the finished task pointers from all threads in that container... than you
     //    just need to pick out the finished task and pass it to the next processing step...
-    std::deque<BaseTask*> OutputQueue;
+    //    std::deque<BaseTask*> OutputQueue;
     int status;
     typedef enum{
         PROCESSING = 0,
         IDLE
     } ThreadStatus_t;
+
+
+
+
 };
 
+#define MAX_TASKS_IN_OUTPUT 20
 #define THREAD_POOL_SIZE 7 // Using Max ( (2x Physical Core Count) - 1 ) looks like a good idea
 #define ROUND_ROBIN 0
+
 class ThreadController
 {
+private:
+    //void *workerThread( void *ptr );
 protected:
     std::vector<ThreadInterface*> m_thread_pool;
 public:
+    std::mutex output_mtx;
+    std::deque<BaseTask*> OutputQueue;
 
-    //    class Parent
+    //    void addOutput(BaseTask* task)
     //    {
-    //      protected:
-    //        virtual void fun(int i)
-    //        {
-    //          cout<<"Parent::fun functionality write here"<<endl;
-    //        }
-    //        void fun1(int i)
-    //        {
-    //          cout<<"Parent::fun1 functionality write here"<<endl;
-    //        }
-    //        void fun2()
-    //        {
+    //        OutputQueue.push_back(task);
+    //    }
 
-    //          cout<<"Parent::fun3 functionality write here"<<endl;
-    //        }
+    virtual ~ThreadController();
 
-    //    };
+    virtual void init();
 
-    //    class Child:public Parent
-    //    {
-    //      public:
-    //        virtual void fun(int i)
-    //        {
-    //          cout<<"Child::fun partial functionality write here"<<endl;
-    //          Parent::fun(++i);
-    //          Parent::fun2();
-    //        }
-    //        void fun1(int i)
-    //        {
-    //          cout<<"Child::fun1 partial functionality write here"<<endl;
-    //          Parent::fun1(++i);
-    //        }
-
-    //    };
-
-    void init()
+    void addTask(BaseTask* task);
+    BaseTask* getTask()
     {
-        for (int i = 0; i<THREAD_POOL_SIZE; i++)
-        {
-            m_thread_pool.push_back(new ThreadInterface());
-            // interfaces.back()->mutex = PTHREAD_MUTEX_INITIALIZER;
-            // pthread_create( &interfaces.back()->id, NULL, workerThread, (void*)interfaces.back() );
-            m_thread_pool.back()->thr = std::thread(workerThread, static_cast<void*>(m_thread_pool.back()));
-            // nanosleep((const struct timespec[]){{0, 1000000L}}, NULL);
-            std::this_thread::sleep_for(std::chrono::nanoseconds(1000000));
-
-        }
-        std::cout<<"Let the Lions in!"<<std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        this->output_mtx.lock();
+        auto tmp_task = OutputQueue.front();
+        OutputQueue.pop_front();
+        this->output_mtx.unlock();
+        return tmp_task;
     }
 
-    void addTask( BaseTask* Task)
-    {
-#if ROUND_ROBIN == 0
-        int tIdx = 0;
-        int tTasks = 0x7FFFFFFF;
-        for(int i=0; i< this->m_thread_pool.size() ; i++)
-        {
-            if (m_thread_pool.at(i)->TaskQueue.size() < tTasks)
-            {
-                tTasks = m_thread_pool.at(i)->TaskQueue.size();
-                tIdx = i;
-            }
-        }
-#else
-        static int32_t tIdx = 0;
-#endif
-        m_thread_pool.at(tIdx)->mtx.lock();
-        // pthread_mutex_lock( &interfaces.at(tIdx)->mutex );
-        m_thread_pool.at(tIdx)->TaskQueue.push_back(Task);
-        std::cout << "Choosing Thread -> " << m_thread_pool.at(tIdx)->thr.get_id()
-                  << " for Task: " << Task->getTaskId()<< std::endl;
-        m_thread_pool.at(tIdx)->mtx.unlock();
-        // pthread_mutex_unlock( &interfaces.at(tIdx)->mutex );
-        if (++tIdx == THREAD_POOL_SIZE )
-            tIdx = 0;
-    }
-
-    void isTaskReady( BaseTask* Task)
-    {
-        // iterate through, chec Task->getTaskId() ==
-        // or just save the pointer to the task jo pass in, and check the status through that pointer..
-    }
+    void isTaskReady( BaseTask* Task);
 
 };
 
-#define MAX_TASKS_IN_OUTPUT 10
-void *workerThread( void *ptr )
-{
-    ThreadInterface* threadInterface = static_cast<ThreadInterface*>(ptr);
-    std::cout << "Thread " << threadInterface->thr.get_id() << " starts"<<std::endl;
-    while(1)
-    {
-        // pthread_mutex_lock(&threadInterface->mutex);
-        threadInterface->mtx.lock();
 
-        if (threadInterface->TaskQueue.size())
-        {
-            BaseTask* task;
-            threadInterface->status = ThreadInterface::PROCESSING;
-            task = threadInterface->TaskQueue.front();
-            threadInterface->TaskQueue.pop_front();
-            task->process(); // here happens some magic
-            std::cout<<"Thread Id: "<<threadInterface->thr.get_id()<<" finished with Task " <<task->getTaskId()<<std::endl;
-            threadInterface->OutputQueue.push_back(task);
-        }
-        else
-            threadInterface->status = ThreadInterface::IDLE;
-
-        // SAFETY xD -> throw away some, to prevent the cpu from melting
-        if (threadInterface->OutputQueue.size() > MAX_TASKS_IN_OUTPUT)
-        {
-            threadInterface->OutputQueue.pop_front();
-        }
-
-        //  pthread_mutex_unlock(&threadInterface->mutex);
-        threadInterface->mtx.unlock();
-        // nanosleep((const struct timespec[]){{0, 100L}}, NULL);
-        std::this_thread::sleep_for(std::chrono::nanoseconds(100));
-
-    }
-}
 
 //#define RAND_MAX 64758 // exactly Trölf
 //int main()
@@ -316,3 +175,5 @@ void *workerThread( void *ptr )
 
 
 #endif // THREADCONTROLLER_H
+
+

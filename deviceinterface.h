@@ -59,6 +59,8 @@ public:
         disconnectRealSenseDevices();
     }
 
+   std::vector<Rs2Device *>* getRs2Devices() { return &m_rs2_devices; }
+
 
     int connectVideoDevice(int idx)
     {
@@ -97,6 +99,24 @@ public:
         //            m_RS_data.back().r_idx_ref = nullptr;
         //            m_RS_data.pop_back();
         //        }
+    }
+
+    void startRecordingRs2Devices()
+    {
+        std::cout << std::endl << "(DeviceInterface) Recording start" << std::endl << std::endl;
+        for(auto device : m_rs2_devices)
+        {
+            device->setRecordingEnabled(true);
+        }
+    }
+
+    void stopRecordingRs2Devices()
+    {
+        std::cout << std::endl << "(DeviceInterface) Recording stop" << std::endl << std::endl;
+        for(auto device : m_rs2_devices)
+        {
+            device->setRecordingEnabled(false);
+        }
     }
 
 

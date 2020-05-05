@@ -34,7 +34,7 @@ private:
 
     rs2::device m_rs2_dev;
     size_t m_rs2_dev_id;
-    Rs2Position_t m_pos_id;
+    CamPosition_t m_pos_id;
     //    std::string m_serial_num;
     //    std::vector<rs2::sensor> m_rs2_sensors;
 
@@ -77,7 +77,7 @@ private:
 
 
 public:
-    Rs2Device(rs2::device &dev, size_t dev_id, Rs2Position_t pos_id, rs2::frame_queue &framebuf);
+    Rs2Device(rs2::device &dev, size_t dev_id, CamPosition_t pos_id, rs2::frame_queue &framebuf);
 
     ~Rs2Device();
 
@@ -91,14 +91,14 @@ public:
     std::string getPositionTypeStr()
     {
         switch (m_pos_id) {
-        case Rs2Position_t::CENTRAL: return "CENTRAL";
-        case Rs2Position_t::FRONT: return "FRONT";
-        case Rs2Position_t::REAR: return "REAR";
+        case CamPosition_t::CENTRAL: return "CENTRAL";
+        case CamPosition_t::FRONT: return "FRONT";
+        case CamPosition_t::REAR: return "REAR";
         default: return "OTHER";
         }
     }
 
-    Rs2Position_t getPositionType() { return m_pos_id; }
+    CamPosition_t getPositionType() { return m_pos_id; }
 
 
     std::function<void (rs2::frame)> depth_callback = [&](const rs2::frame& frame)

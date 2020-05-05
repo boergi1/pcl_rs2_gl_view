@@ -17,6 +17,7 @@
 #define RS_EMITTER_ENABLED 1.f
 #define RS_EMITTER_POWER 1.f
 #define RS_MASTER_SLAVE_CONFIG 1
+#define RS_FILTER 0
 // OpenCV acquisition
 #define CV_FRAME_WIDTH 1280  //1600
 #define CV_FRAME_HEIGHT 720 //1200
@@ -24,6 +25,8 @@
 #define CV_FRAME_PERIOD_MS 1000/CV_FRAME_RATE
 #define CV_REF_PIXEL 60
 #define CV_REF_SIZE_MM 26
+// Converter
+#define CONV_SPLIT_DATA 0
 
 /*
   opencv cam: x,y (2d) same direction as central rs2, but after conversion to 3d point cs is in cam center
@@ -61,7 +64,7 @@
 
 
 // Buffer sizes
-#define BUF_SIZE_RS2FRAMES 100
+#define QUE_SIZE_RS2FRAMES 100
 #define BUF_SIZE_CLOUDS 100
 #define BUF_SIZE_MATS 100
 #define BUF_SIZE_CVCAP 100
@@ -76,7 +79,7 @@
 // Thread poll delays
 #define DELAY_CONV_POLL_NS 100
 // Toggle viewers
-#define PCL_VIEWER 0
+#define PCL_VIEWER 1
 #define IMSHOW 1
 
 

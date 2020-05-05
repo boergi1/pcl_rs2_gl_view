@@ -10,7 +10,8 @@ SOURCES += \
         ocvdevice.cpp \
         pclinterface.cpp \
         rs2_pcl_converter.cpp \
-        rs2device.cpp
+        rs2device.cpp \
+        threadcontroller.cpp
 
 HEADERS += \
     customtypes.h \

@@ -167,7 +167,7 @@ private:
                 m_cvcap_mtx.lock();
                 cv::Mat color = m_cvcap_buf[m_cvcap_read_idx][0];
                 cv::Mat marker = m_cvcap_buf[m_cvcap_read_idx++][1];
-                if (m_cvcap_read_idx == BUF_SIZE_RS2FRAMES)
+                if (m_cvcap_read_idx == QUE_SIZE_RS2FRAMES)
                     m_cvcap_read_idx = 0;
 #if (VERBOSE > 0)
                 std::cout << "(OpenCV segmentation) Increased read index: " << m_cvcap_read_idx << " size0 " << color.size() << " type0 " << color.type() << " size1 "

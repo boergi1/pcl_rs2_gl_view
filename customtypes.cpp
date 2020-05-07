@@ -1,13 +1,13 @@
 #include "customtypes.h"
 
-std::string rs2PositionToString(CamPosition_t pos)
+std::string rs2PositionToString(CameraType_t pos)
 {
     std::string tmp;
     switch (pos) {
-    case CamPosition_t::CENTRAL: tmp = "Central"; break;
-    case CamPosition_t::FRONT: tmp = "Front"; break;
-    case CamPosition_t::REAR: tmp = "Rear"; break;
-    case CamPosition_t::OTHER: tmp = "Other"; break;
+    case CameraType_t::CENTRAL: tmp = "Central"; break;
+    case CameraType_t::FRONT: tmp = "Front"; break;
+    case CameraType_t::REAR: tmp = "Rear"; break;
+    case CameraType_t::OTHER: tmp = "Other"; break;
     }
     return tmp;
 }

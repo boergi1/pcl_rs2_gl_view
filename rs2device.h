@@ -18,33 +18,15 @@
 class Rs2Device
 {
 private:
-    //  std::mutex* m_mutex_ref = nullptr;
-
-    // size_t* m_points_write_idx_ref = nullptr;
-
-    // rs2_references_t m_ref_RS_to_interface;
-
     double m_last_frame_time = 0;
-
-    //   void*               start_flag;
 
     rs2::frame_queue m_frame_queue;
 
-
-
     rs2::device m_rs2_dev;
     size_t m_rs2_dev_id;
-    CamPosition_t m_pos_id;
-    //    std::string m_serial_num;
-    //    std::vector<rs2::sensor> m_rs2_sensors;
+    CameraType_t m_pos_id;
 
     std::thread m_capture_thread;
-    bool m_capture_running = false;
-
-    //    rs2::colorizer m_rs2_colorizer;
-    //    rs2::rates_printer m_rs2_printer;
-    // rs2::pipeline m_rs2_pipe;
-    //    std::string m_name;
 
     rs2::pointcloud m_curr_rs2_pc_cpu;
     rs2::points m_curr_rs2_points_cpu;
@@ -52,9 +34,6 @@ private:
 
     bool m_active = false;
     bool m_recording = false;
-
-    bool m_use_polling = false;
-    bool m_use_gpu_capture = false;
 
     // filters
     rs2::decimation_filter m_dec_filter = rs2::decimation_filter(2.0f);                 // Decimation - reduces depth frame density
@@ -64,7 +43,6 @@ private:
 
 
     std::string get_device_name(const rs2::device& dev);
-    //    std::string getRs2DeviceSerialNum(const rs2::device &dev);
 
     std::string get_sensor_name(const rs2::sensor& sensor);
 
@@ -77,28 +55,27 @@ private:
 
 
 public:
-    Rs2Device(rs2::device &dev, size_t dev_id, CamPosition_t pos_id, rs2::frame_queue &framebuf);
+    Rs2Device(rs2::device &dev, size_t dev_id, CameraType_t pos_id, rs2::frame_queue &framebuf);
 
     ~Rs2Device();
 
     void setCaptureEnabled(bool running);
 
     void setRecordingEnabled(bool recording) { m_recording = recording; }
-    //  rs2::points* m_rs2_points_buf_ref;
 
     bool isActive();
 
     std::string getPositionTypeStr()
     {
         switch (m_pos_id) {
-        case CamPosition_t::CENTRAL: return "CENTRAL";
-        case CamPosition_t::FRONT: return "FRONT";
-        case CamPosition_t::REAR: return "REAR";
+        case CameraType_t::CENTRAL: return "CENTRAL";
+        case CameraType_t::FRONT: return "FRONT";
+        case CameraType_t::REAR: return "REAR";
         default: return "OTHER";
         }
     }
 
-    CamPosition_t getPositionType() { return m_pos_id; }
+    CameraType_t getPositionType() { return m_pos_id; }
 
 
     std::function<void (rs2::frame)> depth_callback = [&](const rs2::frame& frame)
@@ -146,29 +123,16 @@ public:
             rs2_pc_cpu.map_to(depth_tmp);
             m_curr_rs2_points_cpu = rs2_pc_cpu.calculate(depth_tmp);
 
-//            m_ref_RS_to_interface.mtx_ref->lock();
-//            static_cast<rs2::points*>( m_ref_RS_to_interface.buf_ref )[ *m_ref_RS_to_interface.w_idx_ref ]
-//            = m_curr_rs2_points_cpu;
-//            *m_ref_RS_to_interface.w_idx_ref = *m_ref_RS_to_interface.w_idx_ref + 1;
-//            std::cout << "(Rs2Device " << getPositionTypeStr() << ") Increased write index: " << *m_ref_RS_to_interface.w_idx_ref
-//                      << " size " << m_curr_rs2_points_cpu.size() << std::endl;
-//            if (*m_ref_RS_to_interface.w_idx_ref == BUF_SIZE_RS2FRAMES-1)
-//                *m_ref_RS_to_interface.w_idx_ref = 0;
-//            m_ref_RS_to_interface.mtx_ref->unlock();
+            //            m_ref_RS_to_interface.mtx_ref->lock();
+            //            static_cast<rs2::points*>( m_ref_RS_to_interface.buf_ref )[ *m_ref_RS_to_interface.w_idx_ref ]
+            //            = m_curr_rs2_points_cpu;
+            //            *m_ref_RS_to_interface.w_idx_ref = *m_ref_RS_to_interface.w_idx_ref + 1;
+            //            std::cout << "(Rs2Device " << getPositionTypeStr() << ") Increased write index: " << *m_ref_RS_to_interface.w_idx_ref
+            //                      << " size " << m_curr_rs2_points_cpu.size() << std::endl;
+            //            if (*m_ref_RS_to_interface.w_idx_ref == BUF_SIZE_RS2FRAMES-1)
+            //                *m_ref_RS_to_interface.w_idx_ref = 0;
+            //            m_ref_RS_to_interface.mtx_ref->unlock();
 
-            //            m_mutex_ref->lock();
-            //            m_rs2_points_buf_ref[*m_points_write_idx_ref] = m_curr_rs2_points_cpu;
-            //            *m_points_write_idx_ref = *m_points_write_idx_ref + 1;
-            //            std::cout << "(Frames) Increased write index (cpu): " << *m_points_write_idx_ref << " size " << m_curr_rs2_points_cpu.size() << std::endl;
-            //            if (*m_points_write_idx_ref == BUF_SIZE_POINTS-1)
-            //                *m_points_write_idx_ref = 0;
-            //            m_mutex_ref->unlock();
-
-            //            // With callbacks, all synchronized stream will arrive in a single frameset
-            //            for (const rs2::frame& f : fs)
-            //            {
-            //               // counters[f.get_profile().unique_id()]++;
-            //            }
 #if (VERBOSE > 1)
             std::cout << "(Rs2Device " << getPositionTypeStr() << ") Acquisition thread took " << std::chrono::duration_cast<std::chrono::milliseconds>
                          (std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;

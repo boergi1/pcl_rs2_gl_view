@@ -18,40 +18,19 @@
 class DeviceInterface
 {
 private:
-
     rs2::context m_ctx;
 
     std::vector<Rs2Device *> m_rs2_devices;
 
-    //  std::vector<rs2_references_t> m_RS_data;
-
     std::vector<rs2::frame_queue> m_depth_frames;
-
-
-
-    // std::vector<rs2::sensor> m_sensors;
-    // rs2::sensor m_sensors;
-    //   std::vector< std::vector<rs2::sensor> > m_sensors; // -> to std::map
-
-    //  QList<std::string> m_deviceNames;
-    // std::vector<rs2::points*> m_rs2_points_buffers;
-    //  std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> m_pcl_clouds_buffers;
-
 
     std::vector<OcvDevice*> m_opencv_devices;
     std::vector<std::mutex *> m_opencv_devices_dev_mtxs;
     std::vector<cv::Mat*> m_ocv_mat_buffers;
     std::vector<size_t> m_ocv_write_indexes;
 
-
-
-
 public:
     DeviceInterface();
-
-    //    std::mutex getPointsBufferMutex(size_t device_index) {
-    //        //  return  m_rs2_devices.at(device_index)->rs2points_buf_mtx;
-    //    }
 
     ~DeviceInterface()
     {
@@ -60,7 +39,6 @@ public:
     }
 
    std::vector<Rs2Device *>* getRs2Devices() { return &m_rs2_devices; }
-
 
     int connectVideoDevice(int idx)
     {
@@ -73,8 +51,7 @@ public:
         return static_cast<int>( m_opencv_devices.size() );
     }
 
-
-    size_t connectRealSenseDevices();
+    std::vector<CameraType_t> connectRealSenseDevices();
 
     void disconnectRealSenseDevices()
     {
@@ -84,21 +61,9 @@ public:
             m_rs2_devices.back()->setCaptureEnabled(false);
             if (m_rs2_devices.back()->isActive()) std::cerr << "Still active" << std::endl;
             delete m_rs2_devices.back();
+            m_rs2_devices.back() = nullptr;
             m_rs2_devices.pop_back();
         }
-
-        //        while (m_RS_data.size()) {
-        //            std::cout << "(DeviceInterface) Freeing memory of shared references: " << m_RS_data.size() << std::endl;
-        //            delete[] static_cast<rs2::points*>( m_RS_data.back().buf_ref );
-        //            delete m_RS_data.back().mtx_ref;
-        //            delete m_RS_data.back().w_idx_ref;
-        //            delete m_RS_data.back().r_idx_ref;
-        //            m_RS_data.back().buf_ref = nullptr;
-        //            m_RS_data.back().mtx_ref = nullptr;
-        //            m_RS_data.back().w_idx_ref = nullptr;
-        //            m_RS_data.back().r_idx_ref = nullptr;
-        //            m_RS_data.pop_back();
-        //        }
     }
 
     void startRecordingRs2Devices()
@@ -119,7 +84,6 @@ public:
         }
     }
 
-
     std::string getRs2DeviceSerialNum(const rs2::device &dev)
     {
         std::string sn = "Unknown ID";
@@ -132,13 +96,6 @@ public:
     {
         return &m_depth_frames;
     }
-
-    //    std::vector<rs2_references_t> get_rs_data_refs()
-    //    {
-    //        return m_RS_data;
-    //    }
-
-
 
 };
 

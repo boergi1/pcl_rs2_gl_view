@@ -17,9 +17,11 @@ void *workerThread(void *ptr)
             task = threadInterface->TaskQueue.front();
             threadInterface->TaskQueue.pop_front();
             task->process();
+#if (VERBOSE > 2)
             std::cout<<"(ThreadController) " << threadInterface->thr.get_id() << " finished with TASK (type:" << task->getTaskType()
                     << " id:" << task->getTaskId() << "), took " << std::chrono::duration_cast
                        <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
+#endif
             threadInterface->addOutput(task);
             // threadInterface->m_ref_to_controller->OutputQueue.push_back(task);
             // threadInterface->OutputQueue.push_back(task);
@@ -34,38 +36,6 @@ void *workerThread(void *ptr)
 
     }
 }
-
-//void *ThreadController::workerThread(void *ptr)
-//{
-//    ThreadInterface* threadInterface = static_cast<ThreadInterface*>(ptr);
-//    std::cout << "Thread " << threadInterface->thr.get_id() << " starts"<<std::endl;
-//    while(1)
-//    {
-//        // pthread_mutex_lock(&threadInterface->mutex);
-//        threadInterface->mtx.lock();
-
-//        if (threadInterface->TaskQueue.size())
-//        {
-//            BaseTask* task;
-//            threadInterface->status = ThreadInterface::PROCESSING;
-//            task = threadInterface->TaskQueue.front();
-//            threadInterface->TaskQueue.pop_front();
-//            task->process(); // here happens some magic
-//            std::cout<<"Thread Id: "<<threadInterface->thr.get_id()<<" finished with Task " <<task->getTaskId()<<std::endl;
-//            threadInterface->addOutput(task);
-//            // threadInterface->m_ref_to_controller->OutputQueue.push_back(task);
-//            // threadInterface->OutputQueue.push_back(task);
-//        }
-//        else
-//            threadInterface->status = ThreadInterface::IDLE;
-
-//        //  pthread_mutex_unlock(&threadInterface->mutex);
-//        threadInterface->mtx.unlock();
-//        // nanosleep((const struct timespec[]){{0, 100L}}, NULL);
-//        std::this_thread::sleep_for(std::chrono::nanoseconds(100));
-
-//    }
-//}
 
 ThreadController::~ThreadController()
 {
@@ -107,8 +77,10 @@ void ThreadController::addTask(BaseTask *task)
     m_thread_pool.at(tIdx)->mtx.lock();
     // pthread_mutex_lock( &interfaces.at(tIdx)->mutex );
     m_thread_pool.at(tIdx)->TaskQueue.push_back(task);
-    std::cout << "Choosing Thread -> " << m_thread_pool.at(tIdx)->thr.get_id()
+#if (VERBOSE > 2)
+    std::cout << "(ThreadController) Choosing Thread -> " << m_thread_pool.at(tIdx)->thr.get_id()
               << " for TASK (type:" << task->getTaskType() << " id:" << task->getTaskId() << ")" << std::endl;
+#endif
     m_thread_pool.at(tIdx)->mtx.unlock();
     // pthread_mutex_unlock( &interfaces.at(tIdx)->mutex );
     if (++tIdx == THREAD_POOL_SIZE )
@@ -134,7 +106,9 @@ void ThreadInterface::addOutput(BaseTask *task)
     if (m_ref_to_controller->OutputQueue.size() > MAX_TASKS_IN_OUTPUT)
     {
         std::cerr << "(ThreadController) Too many tasks in output" << std::endl;
+        auto tmpptr = m_ref_to_controller->OutputQueue.front();
         m_ref_to_controller->OutputQueue.pop_front();
+      //  delete tmpptr;
     }
     m_ref_to_controller->output_mtx.unlock();
 }

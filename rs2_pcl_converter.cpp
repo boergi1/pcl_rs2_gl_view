@@ -6,6 +6,7 @@ void Rs2_PCL_Converter::converter_thread_func()
 
     //    m_active = true;
     while (m_active) {
+        // bool idle = true;
         // Read from RealSense2 Devices and generate tasks
         for (size_t i = 0; i < m_ref_to_rs2_frames->size(); i++)
         {
@@ -13,21 +14,25 @@ void Rs2_PCL_Converter::converter_thread_func()
             rs2::frame tmp_rs2_frame;
             while ( queue.poll_for_frame(&tmp_rs2_frame) )
             {
+                // idle = false;
                 FrameToPointsTask* task_f2p = new FrameToPointsTask();
                 task_f2p->setTaskType(TaskType_t::TSKTYPE_F2P);
                 task_f2p->setTaskId(m_cam_positions.at(i));
                 task_f2p->setTaskStatus(BaseTask::WORK_TO_DO);
                 task_f2p->in.push_back(tmp_rs2_frame);
                 this->addTask(task_f2p);
+#if (VERBOSE > 0)
                 std::cout << "(Converter) Added TASK \"F2P\" (" << tmp_rs2_frame.get_frame_number() << ") size in: "
-                          << task_f2p->in.size() << " addr: " << &task_f2p << std::endl;
+                          << task_f2p->in.size() << "x" << tmp_rs2_frame.get_data_size() << " addr: " << &task_f2p << std::endl;
+#endif
             }
         }
 
         // Read tasks from output
-        std::cout << "(Converter) Handle " << this->OutputQueue.size() << " finished tasks" << std::endl;
+        // std::cout << "(Converter) Handle " << this->OutputQueue.size() << " finished tasks" << std::endl;
         while(this->OutputQueue.size())
         {
+            //  idle = false;
             BaseTask* tmp_task = getTask();
             auto taskid = tmp_task->getTaskId();
             if (tmp_task->getTaskStatus() == BaseTask::TaskStatus_t::TASK_DONE)
@@ -37,7 +42,7 @@ void Rs2_PCL_Converter::converter_thread_func()
                 case TaskType_t::TSKTYPE_F2P:
                 {
                     switch (taskid) {
-                    case CamPosition_t::CENTRAL:
+                    case CameraType_t::CENTRAL:
                     {
                         for (auto points : static_cast<FrameToPointsTask*>(tmp_task)->out)
                         {
@@ -47,13 +52,15 @@ void Rs2_PCL_Converter::converter_thread_func()
                             task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
                             task_p2c->in.push_back(points);
                             this->addTask(task_p2c);
+#if (VERBOSE > 0)
                             std::cout << "(Converter) Added TASK \"P2C\" CENTRAL (" << points.get_frame_number() << ") size in: "
                                       << task_p2c->in.size() << " addr: " << &task_p2c << std::endl;
+#endif
                         }
                         break;
                     }
-                    case CamPosition_t::FRONT:
-                    case CamPosition_t::REAR:
+                    case CameraType_t::FRONT:
+                    case CameraType_t::REAR:
                     {
 #if (CONV_SPLIT_DATA == 1)
                         // dividing data in multiple tasks
@@ -73,7 +80,6 @@ void Rs2_PCL_Converter::converter_thread_func()
                                       << task_p2c->in.size() << " addr: " << &task_p2c << std::endl;
                         }
 
-
 #else
                         for (rs2::points points : static_cast<FrameToPointsTask*>(tmp_task)->out)
                         {
@@ -83,8 +89,10 @@ void Rs2_PCL_Converter::converter_thread_func()
                             task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
                             task_p2c->in.push_back(points);
                             this->addTask(task_p2c);
-                            std::cout << "(Converter) Added TASK f2p FRONT/REAR (" << points.get_frame_number() << ") size in: "
+#if (VERBOSE > 0)
+                            std::cout << "(Converter) Added TASK \"P2C\" FRONT/REAR (" << points.get_frame_number() << ") size in: "
                                       << task_p2c->in.size() << " addr: " << &task_p2c << std::endl;
+#endif
                         }
 #endif
                         break;
@@ -99,15 +107,34 @@ void Rs2_PCL_Converter::converter_thread_func()
                     //  pcl::PointCloud<pcl::PointXYZ> tmp_pc(RS_FRAME_POINTS_COUNT,1);
                     pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_POINTS_COUNT,1));
 #if (CONV_SPLIT_DATA == 1)
+
                     // combining clouds from tasks
+
 #else
                     switch (taskid) {
-                    case CamPosition_t::CENTRAL:
-                    case CamPosition_t::FRONT:
-                    case CamPosition_t::REAR:
+                    case CameraType_t::CENTRAL:
+                    case CameraType_t::FRONT:
+                    case CameraType_t::REAR:
                     {
                         for (auto cloudtuple : static_cast<PointsToCloudTask*>(tmp_task)->out)
-                            m_ref_to_pcl_queues->at(static_cast<size_t>(taskid))->addCloudT(cloudtuple);
+                        {
+                            for(auto& cloudqueue : *m_ref_to_pcl_queues)
+                            {
+                                if ( taskid == cloudqueue->getCameraType())
+                                {
+                                    cloudqueue->addCloudT(cloudtuple);
+
+#if (VERBOSE > 0)
+                                    std::cout << "(Converter) Added Cloud to queue " << taskid << " (" << std::get<2>(cloudtuple) << ") size: " << std::get<0>(cloudtuple)->size() << std::endl;
+#endif
+                                }
+                            }
+
+                            //                            std::vector<CloudDeque*>* m_ref_to_pcl_queues;
+                            //                            std::vector<CameraType_t> m_cam_positions;
+
+                            // m_ref_to_pcl_queues->at(static_cast<size_t>(taskid))->addCloudT(cloudtuple);
+                        }
                         break;
                     }
                     default: break;
@@ -118,22 +145,25 @@ void Rs2_PCL_Converter::converter_thread_func()
                 default: break;
 
                 }
-                //  delete tmp_task; // -> ??????
+                delete tmp_task; // -> ??????
             }
             else std::cerr << "(Converter) Task in output queue not ready" << std::endl;
 
         }
         std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_CONV_POLL_NS));
+        // if (idle) std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_CONV_POLL_NS));
     }
 }
 
 
-Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, PclInterface *out_interface_ref)
+Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, PclInterface *out_interface_ref, std::vector<CameraType_t> camera_types)
 {
     m_ref_to_rs2_frames = in_interface_ref->getDepthFrameData();
 
-    for (auto device : *in_interface_ref->getRs2Devices())
-        m_cam_positions.push_back(device->getPositionType());
+    m_cam_positions = camera_types;
+
+    //    for (auto device : *in_interface_ref->getRs2Devices())
+    //        m_cam_positions.push_back(device->getPositionType());
 
     m_ref_to_pcl_queues = out_interface_ref->getInputCloudsRef();
 
@@ -158,12 +188,11 @@ PointsToCloudTask::PointsToCloudTask()
 
 PointsToCloudTask::~PointsToCloudTask()
 {
-
+    // todo
 }
 
 void PointsToCloudTask::process()
 {
-    std::cout<<"(ProcessTask) Points -> PointCloud conversion: " << in.size() <<std::endl;
     size_t i = 0;
     //  pcl::PointCloud<pcl::PointXYZ> tmp_pc(RS_FRAME_POINTS_COUNT,1);
     pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_POINTS_COUNT,1));
@@ -189,14 +218,14 @@ void PointsToCloudTask::rs2_transform_point_to_point_custom(float *to_point, con
 
 void PointsToCloudTask::points_to_pcl(const rs2::points &points, pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud)
 {
-#if (VERBOSE > 2)
-    auto start = std::chrono::high_resolution_clock::now();
-#endif
+    //#if (VERBOSE > 2)
+    //    auto start = std::chrono::high_resolution_clock::now();
+    //#endif
     int skipped = 0;
     auto rs_vertex = points.get_vertices();
 
     switch (this->getTaskId()) {
-    case CamPosition_t::CENTRAL: // no transformation
+    case CameraType_t::CENTRAL: // no transformation
         for (auto& pcl_point : pcloud->points)
         {
             pcl_point.x = rs_vertex->x;
@@ -205,9 +234,11 @@ void PointsToCloudTask::points_to_pcl(const rs2::points &points, pcl::PointCloud
             rs_vertex++;
         }
         break;
-    case CamPosition_t::FRONT:
-        //  case TaskType_t::TID_P2C_F_2:
+    case CameraType_t::FRONT:
     {
+        //        1 0 0 0
+        //        0 0 0.0015708 -0.02
+        //        0 -0.0015708 0.999999 -0.01
         float rad = static_cast<float>(degreesToRadians(ROT_RS1_TO_RS0_X_ANG));
         rs2_extrinsics extrinsics_T_Rx;
         extrinsics_T_Rx.rotation[0] = 1; extrinsics_T_Rx.rotation[3] = 0;             extrinsics_T_Rx.rotation[6] = 0;
@@ -247,9 +278,16 @@ void PointsToCloudTask::points_to_pcl(const rs2::points &points, pcl::PointCloud
         }
         break;
     }
-    case CamPosition_t::REAR:
+    case CameraType_t::REAR:
         // case TaskType_t::TID_P2C_R_2:
     {
+        //        1 0 0 0
+        //        0 0 -0.0015708 0.02
+        //        0 0.0015708 0.999999 -0.01
+
+        //        1 0 0 0
+        //        0 0 -1 0.02
+        //        0 1 -4.37114e-08 -0.01
         float rad = static_cast<float>(degreesToRadians(ROT_RS2_TO_RS0_X_ANG));
         rs2_extrinsics extrinsics_T_Rx;
         extrinsics_T_Rx.rotation[0] = 1; extrinsics_T_Rx.rotation[3] = 0;             extrinsics_T_Rx.rotation[6] = 0;
@@ -283,8 +321,9 @@ void PointsToCloudTask::points_to_pcl(const rs2::points &points, pcl::PointCloud
             pcl_point.z = target[2];
             rs_vertex++;
 #if (VERBOSE > 4)
-            std::cerr << "Point before: (" << origin[0] << "," << origin[1] << "," << origin[2] << ")\t" <<
+            std::cout << "Point before: (" << origin[0] << "," << origin[1] << "," << origin[2] << ")\t" <<
                          "Point after: (" << target[0] << "," << target[1] << "," << target[2] << ")" << std::endl;
+            std::this_thread::sleep_for(std::chrono::nanoseconds(100));
 #endif
         }
         break;
@@ -306,7 +345,7 @@ FrameToPointsTask::FrameToPointsTask()
 
 FrameToPointsTask::~FrameToPointsTask()
 {
-
+    // todo
 }
 
 void FrameToPointsTask::process()

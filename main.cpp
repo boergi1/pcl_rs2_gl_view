@@ -13,31 +13,26 @@
 
 int main() try
 {
-
     std::cout << "Main thread started # " << std::this_thread::get_id() << std::endl;
-    DeviceInterface* device_interface;
+    DeviceInterface* device_interface = new DeviceInterface;
     PclInterface* pcl_interface;
     Rs2_PCL_Converter* rs2_pcl_conv;
 
-    device_interface = new DeviceInterface;
-    size_t rs2_device_count = device_interface->connectRealSenseDevices();
-    if (rs2_device_count > 0)
+    auto rs2_device_types = device_interface->connectRealSenseDevices();
+    if (rs2_device_types.size() > 0)
     {
-        pcl_interface = new PclInterface(rs2_device_count);
-        rs2_pcl_conv = new Rs2_PCL_Converter(device_interface, pcl_interface);
+        std::cout << "RealSense devices: " << rs2_device_types.size() << std::endl;
+        pcl_interface = new PclInterface(rs2_device_types);
+        rs2_pcl_conv = new Rs2_PCL_Converter(device_interface, pcl_interface, rs2_device_types);
         rs2_pcl_conv->init(); // start multiple workerthreads
 
         device_interface->startRecordingRs2Devices();
         rs2_pcl_conv->setActive(true);
-
-      //  ThreadController::init();
-//        rs2_pcl_conv->startThread();
-//        pcl_interface->startThread();
+        pcl_interface->setActive(true);
     }
     else std::cerr << "No Realsense device found" << std::endl;
 
     // device_interface->connectVideoDevice(2);
-
 
     while (true) {
         std::this_thread::sleep_for(std::chrono::seconds(1));

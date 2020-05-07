@@ -84,58 +84,21 @@ private:
 
     std::vector<rs2::frame_queue>* m_ref_to_rs2_frames;
     std::vector<CloudDeque*>* m_ref_to_pcl_queues;
-    std::vector<CamPosition_t> m_cam_positions;
+    std::vector<CameraType_t> m_cam_positions;
 
     std::vector<FrameToPointsTask*> m_tasks_f2p;
     std::vector<PointsToCloudTask*> m_tasks_p2c;
 
-
     std::vector<shared_references_t> m_refs_conv_to_PCL;
-
-
-
-
 
     bool m_active = false;
 
-
-
-
-    //    std::mutex* m_points_mutex_ref;
-    //    rs2::points* m_points_buf_ref;
-    //    size_t* m_points_write_idx_ref;
-    //    size_t* m_points_read_idx_ref;
-
-    //  std::mutex* m_clouds_mutex_ref = new std::mutex();
-    //  std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>* m_clouds_buf_ref;
-    //  pcl::PointCloud<pcl::PointXYZ>::Ptr m_clouds_buf_ref;
-    // size_t* m_clouds_write_idx_ref;
-    // size_t* m_clouds_read_idx_ref;
-
-    //  DeviceInterface* m_ref_interface;
-    //  pcl::PointCloud<pcl::PointXYZ>::Ptr cloudPTR(new pcl::PointCloud<pcl::PointXYZ>(FRAME_WIDTH, FRAME_HEIGHT));
-    //    pcl::PointCloud<pcl::PointXYZ>::Ptr current_cloud(new pcl::PointCloud<pcl::PointXYZ>(1280,720));
-    //  pcl::PointCloud<pcl::PointXYZ>::Ptr m_current_cloud;
-
     std::thread m_converter_thread;
-    bool m_running = true;
-
-    //    pcl::PointCloud<pcl::PointXYZ>::Ptr current_cloud(pcl::PointCloud<pcl::PointXYZ>::Ptr());
-    // m_dev_thread = std::thread(&Rs2Device::captureClient, this);
-
-    void converter_thread_func_old();
-
-    //    inline void rs2_transform_point_to_point_custom(float* to_point, const struct rs2_extrinsics* extrin, const float* from_point);
-
-    //    inline void points_to_pcl(const rs2::points& points, pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud, Rs2Position_t dev_idx);
-
 
     void converter_thread_func();
 
-
-
 public:
-    Rs2_PCL_Converter(DeviceInterface* in_interface_ref, PclInterface* out_interface_ref );
+    Rs2_PCL_Converter(DeviceInterface* in_interface_ref, PclInterface* out_interface_ref, std::vector<CameraType_t> camera_types );
 
     virtual ~Rs2_PCL_Converter() override;
 

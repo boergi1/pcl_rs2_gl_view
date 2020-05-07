@@ -117,7 +117,7 @@ void Rs2Device::rs2_capture_thread_func()
 
     rs2::pipeline_profile rs2_profile = rs2_pipe.start(rs2_cfg);
 
-#if (VERBOSE > 2)
+#if (VERBOSE > 1)
     std::cout << std::endl << "(Rs2Device) Enabled streams:" << std::endl;
     for (auto p : rs2_profile.get_streams())
     {
@@ -145,28 +145,24 @@ void Rs2Device::rs2_capture_thread_func()
     }
 #endif
 
-    m_capture_running = true;
-    while (m_capture_running) {
+    while (m_active) {
         rs2::frameset frames = rs2_pipe.wait_for_frames();
-
+#if (VERBOSE > 0)
         auto cap_start = std::chrono::high_resolution_clock::now();
-
-        // rs2::frame color_frame = frames.get_color_frame();
+#endif
         rs2::frame depth_frame = frames.get_depth_frame();
         double drift = depth_frame.get_timestamp() - m_last_frame_time;
         m_last_frame_time = depth_frame.get_timestamp();
 
         if (m_recording)
         {
-#if (RS_FILTER == 1)
-            // filter
+#if (RS_FILTER_FRAMES == 1)
             m_dec_filter.process(depth_frame);
             m_thr_filter.process(depth_frame);
             m_spat_filter.process(depth_frame);
 #endif
-            // enqueue
             m_frame_queue.enqueue(depth_frame);
-#if (VERBOSE > 2)
+#if (VERBOSE > 0)
             std::cout << "(Rs2Device) " << frames.size() << " frame(s) from #" << serial << ": ";
             std::cout.precision(std::numeric_limits<double>::max_digits10);
             std::cout << "Drift: " << drift << ", ";
@@ -217,23 +213,14 @@ void Rs2Device::rs2_capture_thread_func()
             auto cap_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-cap_start).count();
             if (cap_end >= drift)
                 std::cerr << "(Rs2Device) Processing takes longer than capturing" << std::endl;
-#if (VERBOSE > 2)
+#endif
+#if (VERBOSE > 1)
             std::cout << "(Rs2Device) " << getPositionTypeStr() << " capture took " << cap_end << " ms" << std::endl;
 #endif
-#endif
         }
-        //        m_ref_RS_to_interface.mtx_ref->lock();
-        //        static_cast<rs2::frame*>( m_ref_RS_to_interface.buf_ref )[ *m_ref_RS_to_interface.w_idx_ref ] = depth_frame;
-        //        *m_ref_RS_to_interface.w_idx_ref = *m_ref_RS_to_interface.w_idx_ref + 1;
-        //        std::cout << "(Rs2Device " << getPositionTypeStr() << ") Increased write index: " << *m_ref_RS_to_interface.w_idx_ref
-        //                  << " size " << depth_frame.get_data_size() << std::endl;
-        //        if (*m_ref_RS_to_interface.w_idx_ref == BUF_SIZE_RS2FRAMES-1)
-        //            *m_ref_RS_to_interface.w_idx_ref = 0;
-        //        m_ref_RS_to_interface.mtx_ref->unlock();
     }
 
     rs2_pipe.stop();
-
     std::cout << "(Rs2Device) Capture thread stopped: #" << serial << " threadID: " << std::this_thread::get_id() << std::endl;
 }
 
@@ -243,142 +230,25 @@ void Rs2Device::setCaptureEnabled(bool running)
     if (running && !m_capture_thread.joinable())
     {
         std::cout << "(Rs2Device) Enabling capture of " << getPositionTypeStr() << " #" << serial << std::endl;
+        m_active = true;
         m_capture_thread = std::thread(&Rs2Device::rs2_capture_thread_func, this);
-
-        //#if (RS_MASTER_SLAVE_CONFIG == 1)
-        //        auto advanced_dev = m_rs2_dev.as<rs400::advanced_mode>();
-        //        auto advanced_sensors = advanced_dev.query_sensors();
-        //        rs2::sensor depth_sensor;
-        //        for (auto&& sensor : advanced_sensors) {
-        //            std::string module_name = sensor.get_info(RS2_CAMERA_INFO_NAME);
-        //            if (module_name.compare("Stereo Module") == 0)
-        //            {
-        //                depth_sensor = sensor;
-        //            }
-        //        }
-        //        if (depth_sensor)
-        //        {
-        //            depth_sensor.set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 0);
-        //            depth_sensor.set_option(RS2_OPTION_EXPOSURE, 8500); // microseconds
-        //            depth_sensor.set_option(RS2_OPTION_GAIN, 16);
-        //            depth_sensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 1);
-        //        }
-        //        else {
-        //            std::cerr << "(Rs2Device) No depth sensor found #" << serial << std::endl;
-        //            return;
-        //        }
-        //        // Master/slave sync configurations
-        //        if (m_ref_RS_to_interface.pos_type == Rs2Position_t::CENTRAL)
-        //        {
-        //            // master
-        //            depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 1);
-        //            std::cout << "(Rs2Device) Camera " << getPositionType() << " #" << serial << " set to MASTER (val="
-        //                      << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE) << ")" << std::endl;
-        //        }
-        //        else
-        //        {
-        //            //slave
-        //            depth_sensor.set_option(RS2_OPTION_INTER_CAM_SYNC_MODE, 2);
-        //            std::cout << "(Rs2Device) Camera " << getPositionType() << " #" << serial << " set to SLAVE (val="
-        //                      << depth_sensor.get_option(RS2_OPTION_INTER_CAM_SYNC_MODE) << ")" << std::endl;
-        //        }
-        //#endif
-        //        m_rs2_pipe = rs2::pipeline();
-        //        // rs2::pipeline rs2_pipe;
-        //        rs2::config rs2_cfg;
-        //        rs2_cfg.enable_device(serial);
-        //        rs2_cfg.enable_stream(RS2_STREAM_DEPTH, RS_FRAME_WIDTH, RS_FRAME_HEIGHT, RS2_FORMAT_Z16, RS_FRAME_RATE);
-        //        rs2_cfg.disable_stream(RS2_STREAM_COLOR);
-        //        rs2::pipeline_profile rs2_profile = m_rs2_pipe.start(rs2_cfg, depth_callback);
-
     }
     else {
         std::cout << "(Rs2Device) Disabling capture of " << getPositionTypeStr() << " #" << serial << std::endl;
-        m_capture_running = false;
+        m_active = false;
         m_capture_thread.join();
     }
-
-    m_active = running;
-
-    //    while (m_running) {
-    //        auto start = std::chrono::steady_clock::now();
-    //        // Any new frames?
-    //        rs2::frameset frames;
-    //        std::cout << "before frame" << std::endl;
-    //        if (!m_use_polling)
-    //            frames = m_rs2_pipe.wait_for_frames().apply_filter(m_rs2_printer);
-    //        else
-    //            m_rs2_pipe.poll_for_frames(&frames);
-    //        std::cout << "after frame" << std::endl;
-
-    //        rs2::depth_frame depth_tmp  = frames.get_depth_frame();
-    //        rs2::pointcloud rs2_pc_cpu;
-    //        rs2_pc_cpu.map_to(depth_tmp);
-    //        m_curr_rs2_points_cpu = rs2_pc_cpu.calculate(depth_tmp);
-    //        std::string rs2_ts_domain;
-    //        switch( depth_tmp.get_frame_timestamp_domain() )
-    //        {
-    //        case RS2_TIMESTAMP_DOMAIN_HARDWARE_CLOCK:
-    //            rs2_ts_domain = "HW_CLK"; break;
-    //        case RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME:
-    //            rs2_ts_domain = "SYS_TIME"; break;
-    //        case RS2_TIMESTAMP_DOMAIN_GLOBAL_TIME:
-    //            rs2_ts_domain = "GLO_TIME"; break;
-    //        default: rs2_ts_domain = "NONE"; break;
-    //        }
-
-    //        std::cout << "Frame: #" << depth_tmp.get_frame_number() << ": " << depth_tmp.get_timestamp() << " size: "
-    //                  << depth_tmp.get_data_size() << " domain: " << rs2_ts_domain << std::endl;
-
-    //        rs2points_buf_mtx.lock();
-    //        rs2_points_buf[point_write_index++] = m_curr_rs2_points_cpu;
-    //        std::cout << "(Frames) Increased write index (cpu): " << point_write_index << std::endl;
-    //        if (point_write_index == POINT_BUF_SIZE-1)
-    //            point_write_index = 0;
-    //        rs2points_buf_mtx.unlock();
-
-    //        std::cout << "Device thread " << m_name << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
-    //                     (std::chrono::steady_clock::now()-start).count() << " ms" << std::endl;
-
-    //    }
-    //    m_rs2_pipe.stop();
-    //    std::cout << "Device thread" << m_name << " ended" << std::endl;
 }
 
 bool Rs2Device::isActive() { return m_active; }
 
-Rs2Device::Rs2Device(rs2::device &dev, size_t dev_id, CamPosition_t pos_id, rs2::frame_queue &framebuf)
+Rs2Device::Rs2Device(rs2::device &dev, size_t dev_id, CameraType_t pos_id, rs2::frame_queue &framebuf)
 {
     m_rs2_dev = dev;
     m_rs2_dev_id = dev_id;
     m_pos_id = pos_id;
     m_frame_queue = framebuf;
     std::cout << "New Realsense device, type: "<< getPositionTypeStr() << " #" << m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
-    // m_ref_RS_to_interface = pos_id;
-    // print_device_information(m_rs2_dev);
-
-
-
-    // m_rs2_sensors = dev.query_sensors();
-    //    std::cout << "Sensors:" << std::endl;
-    //    for (uint32_t i=0;i<m_rs2_sensors.size();i++)
-    //    {
-    //        std::cout << "  #" << i << " : " <<  get_sensor_name(m_rs2_sensors[i]) << std::endl;
-    //        print_sensor_options(m_rs2_sensors[i]);
-    //    }
-
-    //   rs2_pipe.start(rs2_cfg);
-    // rs2::pipeline_profile rs2_pipe_profile = rs2_pipe.start(rs2_cfg);
-
-
-
-
-    //    std::cout << "Starting device thread: " << m_name << std::endl;
-    //    m_dev_thread = std::thread(&Rs2Device::captureClient, this);
-
-    // m_dev_thread.join();
-
-
 }
 
 Rs2Device::~Rs2Device()

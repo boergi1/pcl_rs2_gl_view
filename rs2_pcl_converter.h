@@ -47,8 +47,8 @@ public:
     virtual ~FrameToPointsTask() override;
 
     std::deque<rs2::frame> in;
-    std::vector<rs2::points> out;
-   // std::vector<std::tuple <rs2::points, double, unsigned long long> > out;
+    std::vector<std::tuple <rs2::points, long long, unsigned long long> > out;
+    // std::vector<rs2::points> out;
 
     void process() override;
 };
@@ -59,8 +59,8 @@ public:
     PointsToCloudTask();
     virtual ~PointsToCloudTask() override;
 
-   // std::deque< std::tuple <rs2::points, double, unsigned long long> > in;
-    std::deque< rs2::points > in;
+    std::deque< std::tuple <rs2::points, long long, unsigned long long> > in;
+    // std::deque< rs2::points > in;
 
     std::vector< std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, double, unsigned long long> > out;
 

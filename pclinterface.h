@@ -40,7 +40,7 @@ public:
     CloudDeque(CameraType_t CameraType){
         m_camtype = CameraType;
     }
-    void addCloudT(std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, double, unsigned long long> cloud_tuple)
+    void addCloudT(std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> cloud_tuple)
     {
         m_mtx.lock();
         m_queue.push_back(cloud_tuple);
@@ -51,7 +51,7 @@ public:
         }
         m_mtx.unlock();
     }
-    std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, double, unsigned long long> getCloudT()
+    std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> getCloudT()
     {
         if (m_queue.size())
         {
@@ -70,7 +70,7 @@ public:
     bool isEmpty() { return m_queue.size() == 0; }
     CameraType_t getCameraType() { return m_camtype; }
 private:
-    std::deque<std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, double, unsigned long long>>  m_queue;
+    std::deque<std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long>>  m_queue;
     std::mutex m_mtx;
     CameraType_t m_camtype;
 };

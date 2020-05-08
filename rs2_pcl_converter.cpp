@@ -44,16 +44,16 @@ void Rs2_PCL_Converter::converter_thread_func()
                     switch (taskid) {
                     case CameraType_t::CENTRAL:
                     {
-                        for (auto points : static_cast<FrameToPointsTask*>(tmp_task)->out)
+                        for (auto tuple : static_cast<FrameToPointsTask*>(tmp_task)->out)
                         {
                             PointsToCloudTask* task_p2c = new PointsToCloudTask();
                             task_p2c->setTaskType(TaskType_t::TSKTYPE_P2C);
                             task_p2c->setTaskId(taskid);
                             task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
-                            task_p2c->in.push_back(points);
+                            task_p2c->in.push_back(tuple);
                             this->addTask(task_p2c);
 #if (VERBOSE > 0)
-                            std::cout << "(Converter) Added TASK \"P2C\" CENTRAL (" << points.get_frame_number() << ") size in: "
+                            std::cout << "(Converter) Added TASK \"P2C\" CENTRAL (" << std::get<0>(tuple).get_frame_number() << ") size in: "
                                       << task_p2c->in.size() << " addr: " << &task_p2c << std::endl;
 #endif
                         }
@@ -81,16 +81,16 @@ void Rs2_PCL_Converter::converter_thread_func()
                         }
 
 #else
-                        for (rs2::points points : static_cast<FrameToPointsTask*>(tmp_task)->out)
+                        for (auto tuple : static_cast<FrameToPointsTask*>(tmp_task)->out)
                         {
                             PointsToCloudTask* task_p2c = new PointsToCloudTask();
                             task_p2c->setTaskType(TaskType_t::TSKTYPE_P2C);
                             task_p2c->setTaskId(taskid);
                             task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
-                            task_p2c->in.push_back(points);
+                            task_p2c->in.push_back(tuple);
                             this->addTask(task_p2c);
 #if (VERBOSE > 0)
-                            std::cout << "(Converter) Added TASK \"P2C\" FRONT/REAR (" << points.get_frame_number() << ") size in: "
+                            std::cout << "(Converter) Added TASK \"P2C\" FRONT/REAR (" << std::get<0>(tuple).get_frame_number() << ") size in: "
                                       << task_p2c->in.size() << " addr: " << &task_p2c << std::endl;
 #endif
                         }
@@ -123,17 +123,11 @@ void Rs2_PCL_Converter::converter_thread_func()
                                 if ( taskid == cloudqueue->getCameraType())
                                 {
                                     cloudqueue->addCloudT(cloudtuple);
-
 #if (VERBOSE > 0)
                                     std::cout << "(Converter) Added Cloud to queue " << taskid << " (" << std::get<2>(cloudtuple) << ") size: " << std::get<0>(cloudtuple)->size() << std::endl;
 #endif
                                 }
                             }
-
-                            //                            std::vector<CloudDeque*>* m_ref_to_pcl_queues;
-                            //                            std::vector<CameraType_t> m_cam_positions;
-
-                            // m_ref_to_pcl_queues->at(static_cast<size_t>(taskid))->addCloudT(cloudtuple);
                         }
                         break;
                     }
@@ -200,11 +194,11 @@ void PointsToCloudTask::process()
     out.resize(in.size());
     while (in.size())
     {
-        rs2::points tmp_points = in.front();
+        auto tuple = in.front();
         in.pop_front();
         // points_to_pcl(tmp_points, pcl::PointCloud<pcl::PointXYZ>::Ptr(&tmp_pc));
-        points_to_pcl(tmp_points, tmp_pc);
-        out.at(i++) = std::make_tuple(tmp_pc, tmp_points.get_timestamp(), tmp_points.get_frame_number());
+        points_to_pcl(std::get<0>(tuple), tmp_pc);
+        out.at(i++) = std::make_tuple(tmp_pc, std::get<1>(tuple), std::get<2>(tuple));
     }
     this->setTaskStatus(TASK_DONE);
 }
@@ -357,9 +351,15 @@ void FrameToPointsTask::process()
     {
         rs2::frame tmp_frame = in.front();
         in.pop_front();
-        //        rs2::pointcloud tmp_rs2_pc;
+
+        rs2_metadata_type sensor_ts = 0;
+        if (tmp_frame.supports_frame_metadata(RS2_FRAME_METADATA_SENSOR_TIMESTAMP))
+            sensor_ts = tmp_frame.get_frame_metadata(RS2_FRAME_METADATA_SENSOR_TIMESTAMP);
+        else std::cerr << "(FrameToPointsTask) Error retrieving frame timestamp" << std::endl;
+
         tmp_rs2_pc.map_to(tmp_frame);
-        out.at(i++) = tmp_rs2_pc.calculate(tmp_frame);
+        out.at(i++) = std::make_tuple(tmp_rs2_pc.calculate(tmp_frame), sensor_ts, tmp_frame.get_frame_number());
+        // out.at(i++) = tmp_rs2_pc.calculate(tmp_frame);
     }
     this->setTaskStatus(TASK_DONE);
 }

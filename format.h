@@ -2,7 +2,7 @@
 #define FORMAT_H
 
 // Verbosity level
-#define VERBOSE 0
+#define VERBOSE 1
 // Makros
 #define degreesToRadians(angleDegrees) ((angleDegrees) * M_PI / 180.0)
 #define radiansToDegrees(angleRadians) ((angleRadians) * 180.0 / M_PI)
@@ -83,7 +83,7 @@
 #define DELAY_TRAC CV_FRAME_PERIOD_MS/2
 #define DELAY_SHOW CV_FRAME_PERIOD_MS/2
 // Toggle viewers
-#define PCL_VIEWER 1
+#define PCL_VIEWER 0
 #define IMSHOW 1
 
 

@@ -49,7 +49,9 @@ LIBS += \
         -lvtkRenderingLOD-6.3 \
         -lvtkFiltersSources-6.3 \
         -lvtkCommonDataModel-6.3 \
-        -lvtkCommonMath-6.3
+        -lvtkCommonMath-6.3 \
+        # GL/GLU/GLFW
+        -lGL -lGLU -lglfw
         # PCL - non standard libs
 #        -lpcl_gpu_octree -lpcl_gpu_containers -lpcl_gpu_utils \
 #        -lpcl_gpu_features -lpcl_gpu_kinfu -lpcl_gpu_kinfu_large_scale -lpcl_gpu_segmentation \

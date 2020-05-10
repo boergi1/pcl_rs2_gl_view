@@ -12,7 +12,7 @@ std::vector<CameraType_t> DeviceInterface::connectRealSenseDevices()
 
     for (auto&& dev : m_ctx.query_devices())
     {
-        CameraType_t pos_id;
+        CameraType_t cam_id;
         std::string serial_num = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
 
         // test usb connection
@@ -33,12 +33,12 @@ std::vector<CameraType_t> DeviceInterface::connectRealSenseDevices()
         }
 
         // get position by serial number
-        if (serial_num == RS0_CENTRAL_SERIAL)
-            pos_id = CameraType_t::CENTRAL;
-        else if (serial_num == RS1_FRONT_SERIAL)
-            pos_id = CameraType_t::FRONT;
-        else if (serial_num == RS2_REAR_SERIAL)
-            pos_id = CameraType_t::REAR;
+        if (serial_num == RS_CENTRAL_SERIAL)
+            cam_id = CameraType_t::CENTRAL;
+        else if (serial_num == RS_FRONT_SERIAL)
+            cam_id = CameraType_t::FRONT;
+        else if (serial_num == RS_REAR_SERIAL)
+            cam_id = CameraType_t::REAR;
         else
         {
             std::cerr << "(DeviceInterface) No matching RS2 serial number: " << serial_num << std::endl;
@@ -46,13 +46,15 @@ std::vector<CameraType_t> DeviceInterface::connectRealSenseDevices()
             continue;
         }
         
-        m_depth_frames.push_back(rs2::frame_queue(QUE_SIZE_RS2FRAMES, true));
+      //  m_depth_frame_queues.push_back(rs2::frame_queue(QUE_SIZE_RS2FRAMES, true));
+        m_depth_frame_queues.push_back(new FrameQueue(cam_id));
+        m_color_frame_queues.push_back(new FrameQueue(cam_id));
 
-        m_rs2_devices.push_back(new Rs2Device( dev, device_id, pos_id, m_depth_frames.back()));
+        m_rs2_devices.push_back(new Rs2Device( dev, device_id, cam_id, m_depth_frame_queues.back(), m_color_frame_queues.back()));
 
         m_rs2_devices.back()->setCaptureEnabled(true);
 
-        devices.push_back(pos_id);
+        devices.push_back(cam_id);
 
         device_id++;
         std::this_thread::sleep_for(std::chrono::seconds(3));

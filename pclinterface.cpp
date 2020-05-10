@@ -125,7 +125,7 @@ PclInterface::PclInterface(std::vector<CameraType_t> device_types)
 {
     for (auto& camtype : device_types)
     {
-        m_input_clouds.push_back(new CloudDeque(camtype));
+        m_input_clouds.push_back(new CloudQueue(camtype));
 #if (PCL_VIEWER == 1)
         m_viewer_clouds.push_back(nullptr);
         m_pcl_viewer.runOnVisualizationThreadOnce (viewer_callback);
@@ -133,7 +133,7 @@ PclInterface::PclInterface(std::vector<CameraType_t> device_types)
     }
 }
 
-std::vector<CloudDeque *>* PclInterface::getInputCloudsRef()
+std::vector<CloudQueue *>* PclInterface::getInputCloudsRef()
 {
     return &m_input_clouds;
 }

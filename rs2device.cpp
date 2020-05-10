@@ -120,8 +120,11 @@ void Rs2Device::rs2_capture_thread_func()
     rs2::config rs2_cfg;
     rs2_cfg.enable_device(serial);
     rs2_cfg.enable_stream(RS2_STREAM_DEPTH, RS_FRAME_WIDTH, RS_FRAME_HEIGHT, RS2_FORMAT_Z16, RS_FRAME_RATE);
+#if (RS_COLOR_ENABLED == 0)
     rs2_cfg.disable_stream(RS2_STREAM_COLOR);
-
+#else
+    rs2_cfg.enable_stream(RS2_STREAM_COLOR);
+#endif
     rs2::pipeline_profile rs2_profile = rs2_pipe.start(rs2_cfg);
 
 #if (VERBOSE > 1)
@@ -158,6 +161,9 @@ void Rs2Device::rs2_capture_thread_func()
         auto cap_start = std::chrono::high_resolution_clock::now();
 #endif
         rs2::frame depth_frame = frames.get_depth_frame();
+#if (RS_COLOR_ENABLED > 0)
+        rs2::frame color_frame = frames.get_color_frame();
+#endif
         rs2_metadata_type sensor_ts = 0;
 
         if (depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_SENSOR_TIMESTAMP))
@@ -175,7 +181,13 @@ void Rs2Device::rs2_capture_thread_func()
             m_thr_filter.process(depth_frame);
             m_spat_filter.process(depth_frame);
 #endif
-            m_frame_queue.enqueue(depth_frame);
+#if (RS_DEPTH_ENABLED > 0)
+            m_depth_frame_queue->addFrame(depth_frame);
+#endif
+            //            m_frame_queue.enqueue(depth_frame);
+#if (RS_COLOR_ENABLED > 0)
+            m_color_frame_queue->addFrame(color_frame);
+#endif
 #if (VERBOSE > 0)
             std::cout << "(Rs2Device) " << frames.size() << " frame(s) from #" << serial << ": ";
             std::cout.precision(std::numeric_limits<double>::max_digits10);
@@ -258,12 +270,13 @@ void Rs2Device::setCaptureEnabled(bool running)
 
 bool Rs2Device::isActive() { return m_active; }
 
-Rs2Device::Rs2Device(rs2::device &dev, size_t dev_id, CameraType_t pos_id, rs2::frame_queue &framebuf)
+Rs2Device::Rs2Device(rs2::device &dev, size_t dev_id, CameraType_t pos_id, FrameQueue *depth_frames, FrameQueue *color_frames)
 {
     m_rs2_dev = dev;
     m_rs2_dev_id = dev_id;
     m_pos_id = pos_id;
-    m_frame_queue = framebuf;
+    m_depth_frame_queue = depth_frames;
+    m_color_frame_queue = color_frames;
     std::cout << "New Realsense device, type: "<< getPositionTypeStr() << " #" << m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
 }
 

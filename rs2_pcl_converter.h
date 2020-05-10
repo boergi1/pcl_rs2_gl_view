@@ -82,8 +82,9 @@ class Rs2_PCL_Converter : ThreadController
 private:
 
 
-    std::vector<rs2::frame_queue>* m_ref_to_rs2_frames;
-    std::vector<CloudDeque*>* m_ref_to_pcl_queues;
+    //    std::vector<rs2::frame_queue>* m_ref_to_rs2_queues;
+    std::vector<FrameQueue*>* m_ref_to_rs2_queues;
+    std::vector<CloudQueue*>* m_ref_to_pcl_queues;
     std::vector<CameraType_t> m_cam_positions;
 
     std::vector<FrameToPointsTask*> m_tasks_f2p;

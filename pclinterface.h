@@ -34,43 +34,44 @@
 #include <mutex>
 #include <chrono>
 
-class CloudDeque
+class CloudQueue
 {
 public:
-    CloudDeque(CameraType_t CameraType){
+    CloudQueue(CameraType_t CameraType){
         m_camtype = CameraType;
     }
     void addCloudT(std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> cloud_tuple)
     {
         m_mtx.lock();
-        m_queue.push_back(cloud_tuple);
-        if (m_queue.size() > QUE_SIZE_PCL)
+        m_cqueue.push_back(cloud_tuple);
+        if (m_cqueue.size() > QUE_SIZE_PCL)
         {
             std::cerr << "(CloudDeque) Too many clouds in queue" << std::endl;
-            m_queue.pop_front();
+            m_cqueue.pop_front();
         }
         m_mtx.unlock();
     }
     std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> getCloudT()
     {
-        if (m_queue.size())
+        if (m_cqueue.size())
         {
             m_mtx.lock();
-            auto tmp_ptr = m_queue.front();
-            m_queue.pop_front();
+            auto tmp_ptr = m_cqueue.front();
+            m_cqueue.pop_front();
             m_mtx.unlock();
             return tmp_ptr;
         }
         else
         {
             std::cerr << "(CloudDeque) is empty" << std::endl;
-            return std::make_tuple(nullptr, NULL, NULL);
+            return *m_cqueue.end();
+           // return std::make_tuple(nullptr, NULL, NULL);
         }
     }
-    bool isEmpty() { return m_queue.size() == 0; }
+    bool isEmpty() { return m_cqueue.size() == 0; }
     CameraType_t getCameraType() { return m_camtype; }
 private:
-    std::deque<std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long>>  m_queue;
+    std::deque<std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long>>  m_cqueue;
     std::mutex m_mtx;
     CameraType_t m_camtype;
 };
@@ -84,7 +85,7 @@ private:
     pcl::PointCloud<pcl::PointXYZ>::Ptr m_filtered_cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr
             (new pcl::PointCloud<pcl::PointXYZ>);
 
-    std::vector< CloudDeque* > m_input_clouds;
+    std::vector< CloudQueue* > m_input_clouds;
     std::thread m_pc_proc_thread;
 
 
@@ -102,7 +103,7 @@ public:
 
 
 
-    std::vector<CloudDeque *>* getInputCloudsRef();
+    std::vector<CloudQueue *>* getInputCloudsRef();
 
 #if (PCL_VIEWER == 1)
     std::function<void (pcl::visualization::PCLVisualizer&)> viewer_callback = [](pcl::visualization::PCLVisualizer& viewer)

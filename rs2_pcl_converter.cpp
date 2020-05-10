@@ -8,13 +8,14 @@ void Rs2_PCL_Converter::converter_thread_func()
     while (m_active) {
         // bool idle = true;
         // Read from RealSense2 Devices and generate tasks
-        for (size_t i = 0; i < m_ref_to_rs2_frames->size(); i++)
+        for (size_t i = 0; i < m_ref_to_rs2_queues->size(); i++)
         {
-            auto &queue = m_ref_to_rs2_frames->at(i);
-            rs2::frame tmp_rs2_frame;
-            while ( queue.poll_for_frame(&tmp_rs2_frame) )
+            //            auto &queue = m_ref_to_rs2_queues->at(i);
+            auto queue = m_ref_to_rs2_queues->at(i);
+
+            while ( !queue->isEmpty() )
             {
-                // idle = false;
+                rs2::frame tmp_rs2_frame = queue->getFrame();
                 FrameToPointsTask* task_f2p = new FrameToPointsTask();
                 task_f2p->setTaskType(TaskType_t::TSKTYPE_F2P);
                 task_f2p->setTaskId(m_cam_positions.at(i));
@@ -26,6 +27,20 @@ void Rs2_PCL_Converter::converter_thread_func()
                           << task_f2p->in.size() << "x" << tmp_rs2_frame.get_data_size() << " addr: " << &task_f2p << std::endl;
 #endif
             }
+            //            while ( queue.poll_for_frame(&tmp_rs2_frame) )
+            //            {
+            //                // idle = false;
+            //                FrameToPointsTask* task_f2p = new FrameToPointsTask();
+            //                task_f2p->setTaskType(TaskType_t::TSKTYPE_F2P);
+            //                task_f2p->setTaskId(m_cam_positions.at(i));
+            //                task_f2p->setTaskStatus(BaseTask::WORK_TO_DO);
+            //                task_f2p->in.push_back(tmp_rs2_frame);
+            //                this->addTask(task_f2p);
+            //#if (VERBOSE > 0)
+            //                std::cout << "(Converter) Added TASK \"F2P\" (" << tmp_rs2_frame.get_frame_number() << ") size in: "
+            //                          << task_f2p->in.size() << "x" << tmp_rs2_frame.get_data_size() << " addr: " << &task_f2p << std::endl;
+            //#endif
+            //            }
         }
 
         // Read tasks from output
@@ -152,7 +167,7 @@ void Rs2_PCL_Converter::converter_thread_func()
 
 Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, PclInterface *out_interface_ref, std::vector<CameraType_t> camera_types)
 {
-    m_ref_to_rs2_frames = in_interface_ref->getDepthFrameData();
+    m_ref_to_rs2_queues = in_interface_ref->getDepthFrameData();
 
     m_cam_positions = camera_types;
 

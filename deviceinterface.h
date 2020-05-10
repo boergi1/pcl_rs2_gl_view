@@ -14,13 +14,14 @@
 #include "ocvdevice.h"
 #include "customtypes.h"
 
-
 class DeviceInterface
 {
 private:
     rs2::context m_ctx;
-    std::vector<Rs2Device *> m_rs2_devices;
-    std::vector<rs2::frame_queue> m_depth_frames;
+    std::vector<Rs2Device*> m_rs2_devices;
+//    std::vector<rs2::frame_queue> m_depth_frame_queues;
+    std::vector<FrameQueue*> m_depth_frame_queues;
+    std::vector<FrameQueue*> m_color_frame_queues;
 
     std::vector<OcvDevice*> m_opencv_devices;
     std::vector<std::mutex *> m_opencv_devices_dev_mtxs;
@@ -36,7 +37,7 @@ public:
         disconnectRealSenseDevices();
     }
 
-   std::vector<Rs2Device *>* getRs2Devices() { return &m_rs2_devices; }
+    std::vector<Rs2Device *>* getRs2Devices() { return &m_rs2_devices; }
 
     int connectVideoDevice(int idx)
     {
@@ -90,9 +91,18 @@ public:
         return sn;
     }
 
-    std::vector<rs2::frame_queue>* getDepthFrameData()
+//    std::vector<rs2::frame_queue>* getDepthFrameData()
+//    {
+//        return &m_depth_frame_queues;
+//    }
+
+    std::vector<FrameQueue*>* getDepthFrameData()
     {
-        return &m_depth_frames;
+        return &m_depth_frame_queues;
+    }
+    std::vector<FrameQueue*>* getColorFrameData()
+    {
+        return &m_color_frame_queues;
     }
 
 };

@@ -2,15 +2,13 @@
 #define THREADCONTROLLER_H
 
 #include <iostream>
-//#include <pthread.h>
 #include <queue>
 #include <algorithm>
 #include "unistd.h"
-//#include <ctime>
-
 #include <thread>
 #include <mutex>
 
+#include "format.h"
 
 class BaseTask;
 class AdditionTask;

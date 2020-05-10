@@ -84,7 +84,7 @@
 #define DELAY_SHOW CV_FRAME_PERIOD_MS/2
 // Toggle viewers
 #define PCL_VIEWER 0
-#define IMSHOW 1
+#define IMSHOW_CV 1
 
 
 

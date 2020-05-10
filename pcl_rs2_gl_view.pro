@@ -17,13 +17,17 @@ HEADERS += \
     customtypes.h \
     deviceinterface.h \
     format.h \
+    glgraphics.hpp \
     ocvdevice.h \
     pclinterface.h \
     rs2_pcl_converter.h \
     rs2device.h \
+    third-party/stb_easy_font.h \
     threadcontroller.h
 
 INCLUDEPATH += /usr/include/pcl-1.8 /usr/include/eigen3 /usr/include/ni /usr/include/vtk-6.3 /usr/include/boost /usr/local/include/opencv4
+#/usr/include/GLFW/glfw3.h
+
 LIBS += \
         # General
         -pthread \ #-lflann -lqhull \ # -lOpenNI -lOpenNI2

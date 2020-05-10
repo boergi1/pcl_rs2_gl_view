@@ -68,7 +68,7 @@ private:
     cv::Mat m_distortion_matrix = (cv::Mat_<double>(1,5)
                                    << 0.04919262406757813, -0.327470880978306, -0.02294260753870032,
                                    -0.006202738044303966, 5.698900974016862 );
-#ifdef IMSHOW
+#ifdef IMSHOW_CV
     // cv::Mats for cv::imshow
     cv::Mat m_current_mat_cap, m_current_mat_mark, m_current_mat_seg, m_current_mat_tra;
     std::mutex m_mat_cap_mtx, m_mat_mark_mtx, m_mat_seg_mtx, m_mat_tra_mtx;
@@ -96,7 +96,7 @@ private:
                       << m_capture->get(cv::CAP_PROP_FRAME_HEIGHT) << " at " << m_capture->get(cv::CAP_PROP_FPS) << " fps" << std::endl;
             m_segmentation_thread = std::thread(&OcvDevice::segmentation_thread_func, this);
             m_tracking_thread = std::thread(&OcvDevice::tracking_thread_func, this);
-#if (IMSHOW > 0 && VERBOSE > 0)
+#if (IMSHOW_CV > 0 && VERBOSE > 0)
             m_imshow_thread = std::thread(&OcvDevice::imshow_thread_func, this);
 #endif
         }
@@ -218,7 +218,7 @@ private:
                         tmp_tr_obj[i].unique_id = -1;
                         tmp_tr_obj[i].lost_ctr = 0;
                         tmp_tr_obj[i].seen_ctr = 0;
-#if (IMSHOW > 0 && VERBOSE > 0)
+#if (IMSHOW_CV > 0 && VERBOSE > 0)
                         // Draw markers on cv window
                         cv::rectangle(marker, cv::Rect(tmp_tr_obj[i].x, tmp_tr_obj[i].y,
                                                        tmp_tr_obj[i].w, tmp_tr_obj[i].h), cv::Scalar(0), 1);
@@ -241,7 +241,7 @@ private:
                 std::cout << "(OpenCV segmentation) Increased queue size: " << m_tracked_objects_buf->tobj_ptr_queue.size() << " size: array of "
                           << marker_count << std::endl;
 #endif
-#if (IMSHOW > 0 && VERBOSE > 0)
+#if (IMSHOW_CV > 0 && VERBOSE > 0)
                 cv::putText(marker, std::to_string(marker_count),
                             cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
                 m_mat_seg_mtx.lock();
@@ -489,7 +489,7 @@ private:
                         deregisterObjects(&lost_objects, m_tracked_objects);
                         tracked_objects_size = m_tracked_objects->size();
                     }
-#if (IMSHOW > 0 && VERBOSE > 0)
+#if (IMSHOW_CV > 0 && VERBOSE > 0)
 
                     //                    // Calculate mean velocity vectors
                     //                    if ( !m_vel_x.empty() )
@@ -703,7 +703,7 @@ public:
         cv::Mat bg, dt, tmp;
         // Pre processing
         cv::threshold(grayimg, tmp, 100, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
-#if (IMSHOW > 0 && VERBOSE > 0)
+#if (IMSHOW_CV > 0 && VERBOSE > 0)
         m_mat_mark_mtx.lock();
         // markers.convertTo(markers, CV_8U);
         tmp.copyTo(m_current_mat_mark);

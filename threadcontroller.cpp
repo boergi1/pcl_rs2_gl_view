@@ -44,14 +44,16 @@ ThreadController::~ThreadController()
 
 void ThreadController::init()
 {
-    std::cout << std::endl <<"(ThreadController) Initializing " << THREAD_POOL_SIZE << " threads:"<<std::endl;
+#if (VERBOSE > 0)
+    std::cout << std::endl <<"(ThreadController) Initializing " << THREAD_POOL_SIZE << " threads"<<std::endl;
+#endif
     for (int i = 0; i<THREAD_POOL_SIZE; i++)
     {
         m_thread_pool.push_back(new ThreadInterface(this));
-        // interfaces.back()->mutex = PTHREAD_MUTEX_INITIALIZER;
-        // pthread_create( &interfaces.back()->id, NULL, workerThread, (void*)interfaces.back() );
         m_thread_pool.back()->thr = std::thread(workerThread, static_cast<void*>(m_thread_pool.back()));
+#if (VERBOSE > 1)
         std::cout << "T #" << i << ": " << m_thread_pool.back()->thr.get_id() << std::endl;
+#endif
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000000));
     }
     std::cout << std::endl;
@@ -108,7 +110,7 @@ void ThreadInterface::addOutput(BaseTask *task)
         std::cerr << "(ThreadController) Too many tasks in output" << std::endl;
         auto tmpptr = m_ref_to_controller->OutputQueue.front();
         m_ref_to_controller->OutputQueue.pop_front();
-      //  delete tmpptr;
+        //  delete tmpptr;
     }
     m_ref_to_controller->output_mtx.unlock();
 }

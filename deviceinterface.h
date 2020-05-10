@@ -19,9 +19,7 @@ class DeviceInterface
 {
 private:
     rs2::context m_ctx;
-
     std::vector<Rs2Device *> m_rs2_devices;
-
     std::vector<rs2::frame_queue> m_depth_frames;
 
     std::vector<OcvDevice*> m_opencv_devices;

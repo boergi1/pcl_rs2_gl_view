@@ -201,31 +201,31 @@ void Rs2Device::rs2_capture_thread_func()
                 std::cout << "Unknown";
                 break;
             }
-            std::cout << " TS: " << depth_frame.get_timestamp() << "  Sensor TS: " << sensor_ts << " (" << depth_frame.get_frame_number() << "), size: "
+            std::cout << " TS: " << depth_frame.get_timestamp() << " (" << depth_frame.get_frame_number() << "), size: "
                       << depth_frame.get_data_size() << " bytes" << std::endl;
 
-            //            const rs2_frame* frame_handle = depth_frame.get();
-            //            if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr) ) // device ts at data readout/transmission
-            //            {
-            //                rs2_metadata_type frame_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_FRAME_TIMESTAMP, nullptr);
-            //                std::cout << "DEBUG RS2_FRAME_METADATA_FRAME_TIMESTAMP (usec) " << frame_ts_meta << std::endl;
-            //            }
-            //            if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr) ) // device ts at middle of exposure
-            //            {
-            //                rs2_metadata_type sensor_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_SENSOR_TIMESTAMP, nullptr);
-            //                std::cout << "DEBUG RS2_FRAME_METADATA_SENSOR_TIMESTAMP (usec) " << sensor_ts_meta << std::endl;
-            //            }
-            //            if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr) ) // system ts
-            //            {
-            //                rs2_metadata_type arrival_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_TIME_OF_ARRIVAL, nullptr);
-            //                std::cout << "DEBUG RS2_FRAME_METADATA_TIME_OF_ARRIVAL " << arrival_ts_meta << std::endl;
-            //            }
-            //            if ( rs2_supports_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr) ) // ts from uvc
-            //            {
-            //                rs2_metadata_type backend_ts_meta = rs2_get_frame_metadata(frame_handle, RS2_FRAME_METADATA_BACKEND_TIMESTAMP, nullptr);
-            //                std::cout << "DEBUG RS2_FRAME_METADATA_BACKEND_TIMESTAMP (usec) " << backend_ts_meta << std::endl;
-            //            }
-
+            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_FRAME_TIMESTAMP) )
+            {
+                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_FRAME_TIMESTAMP);
+                std::cout << "DEBUG RS2_FRAME_METADATA_FRAME_TIMESTAMP (usec) " << metadata << std::endl;
+            }
+            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_SENSOR_TIMESTAMP) )
+            {
+                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_SENSOR_TIMESTAMP);
+                std::cout << "DEBUG RS2_FRAME_METADATA_SENSOR_TIMESTAMP (usec) " << metadata << std::endl;
+            }
+            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL) )
+            {
+                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL);
+                std::cout << "DEBUG RS2_FRAME_METADATA_TIME_OF_ARRIVAL (msec)" << metadata << std::endl;
+            }
+            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP) )
+            {
+                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP);
+                std::cout << "DEBUG RS2_FRAME_METADATA_BACKEND_TIMESTAMP (msec) " << metadata << std::endl;
+            }
+#endif
+#if (VERBOSE > 0)
             auto cap_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-cap_start).count();
             if (cap_end >= drift)
                 std::cerr << "(Rs2Device) Processing takes longer than capturing" << std::endl;

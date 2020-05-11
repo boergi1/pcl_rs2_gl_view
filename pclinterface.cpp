@@ -8,38 +8,133 @@
 void PclInterface::pc_proc_thread_func()
 {
     std::cout << "PCL thread started # " << std::this_thread::get_id() << std::endl;
-#if (PCL_VIEWER == 1)
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_downsampled (new pcl::PointCloud<pcl::PointXYZ>);
+    //#if (PCL_VIEWER == 1)
+    //    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_downsampled (new pcl::PointCloud<pcl::PointXYZ>);
+    //#endif
+
+    size_t max_times = 100;
+    std::deque<long> proc_times;
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>());
+
+#if (PCL_FILTER_REGION > 0)
+    pcl::CropBox<pcl::PointXYZ> boxFilter;
+    boxFilter.setMin(Eigen::Vector4f(-PCL_FILTER_REGION_X_M, -PCL_FILTER_REGION_Y_M, 0.0, 1.0));
+    boxFilter.setMax(Eigen::Vector4f(PCL_FILTER_REGION_X_M, PCL_FILTER_REGION_Y_M, PCL_FILTER_REGION_Z_M, 1.0));
+
+    pcl::ConditionalRemoval<pcl::PointXYZ> conditionalRemoval;
+    pcl::ConditionOr<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionOr<pcl::PointXYZ> ());
+    range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::Ptr (new pcl::FieldComparison<pcl::PointXYZ>("x", pcl::ComparisonOps::GT, -PCL_FILTER_REGION_X_M)));
+    range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::Ptr (new pcl::FieldComparison<pcl::PointXYZ>("x", pcl::ComparisonOps::LT, PCL_FILTER_REGION_X_M)));
+    range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::Ptr (new pcl::FieldComparison<pcl::PointXYZ>("y", pcl::ComparisonOps::GT, -PCL_FILTER_REGION_Y_M)));
+    range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::Ptr (new pcl::FieldComparison<pcl::PointXYZ>("y", pcl::ComparisonOps::LT, PCL_FILTER_REGION_Y_M)));
+    range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::Ptr (new pcl::FieldComparison<pcl::PointXYZ>("z", pcl::ComparisonOps::GT, 0.0)));
+    range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::Ptr (new pcl::FieldComparison<pcl::PointXYZ>("z", pcl::ComparisonOps::LT, PCL_FILTER_REGION_Z_M)));
 #endif
+#if (PCL_REMOVE_PLANE > 0)
+    pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+    pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+    pcl::SACSegmentation<pcl::PointXYZ> seg;
+    pcl::ExtractIndices<pcl::PointXYZ> extract;
+    seg.setOptimizeCoefficients (true);
+    seg.setModelType (pcl::SACMODEL_PLANE);
+    seg.setMethodType (pcl::SAC_RANSAC);
+    seg.setDistanceThreshold (0.01);
+
+    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+    std::vector<pcl::PointIndices> cluster_indices;
+    pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+#endif
+
+
     while (m_active)
     {
 #if (VERBOSE > 0)
-        auto start = std::chrono::high_resolution_clock::now();
+        auto pcl_proc_start = std::chrono::high_resolution_clock::now();
 #endif
         bool idle = true;
-        for (size_t i = 0; i < m_input_clouds.size(); i++) {
+        for (size_t i = 0; i < m_input_clouds.size(); i++)
+        {
             auto cloudqueue = m_input_clouds.at(i);
             if ( !cloudqueue->isEmpty() )
             {
                 idle = false;
                 auto camType = cloudqueue->getCameraType();
                 auto cloudt = cloudqueue->getCloudT();
-                auto pointcloud = std::get<0>(cloudt);
+                pointcloud = std::get<0>(cloudt);
                 auto ts = std::get<1>(cloudt);
                 auto ctr = std::get<2>(cloudt);
 #if (VERBOSE > 0)
                 std::cout << "(PclInterface) PointCloud received from camera " << camType << "(" << ctr << "), size: " << pointcloud->size() << std::endl;
 #endif
-                //  pcl::CropBox
+
+                // 1. pcl::PassThrough() +y = conveyor dir, z+ = conveyor dist, x = conveyor width
+#if (PCL_FILTER_REGION > 10)
+                if ((true)) // 32 - 35 ms (3xtotal)
+                {
+                    boxFilter.setInputCloud(pointcloud);
+                    boxFilter.filter(*filtered);
+                }
+                if ((false))
+                {
+                    conditionalRemoval.setInputCloud(pointcloud);
+                    conditionalRemoval.setCondition (range_cond);
+                    conditionalRemoval.filter(*filtered);
+                }
+#endif
+
+
+                // 2. remove planar surface
+#if (PCL_REMOVE_PLANE > 0)  // > 2s (3xtotal)
+                seg.setInputCloud (pointcloud);
+                seg.segment (*inliers, *coefficients);
+                if (inliers->indices.size () == 0)
+                    PCL_ERROR ("Could not estimate a planar model for the given dataset.");
+
+                // Remove found surface
+                extract.setInputCloud (pointcloud);
+                extract.setIndices (inliers);
+                extract.setNegative (true);
+                extract.filter(*filtered);
+
+                std::cerr << "Model data size: " << filtered->size() << std::endl;
+                std::cerr << "Model coefficients: " << coefficients->values[0] << " "
+                          << coefficients->values[1] << " "
+                          << coefficients->values[2] << " "
+                          << coefficients->values[3] << std::endl;
+                std::cerr << "Model inliers: " << inliers->indices.size() << std::endl;
+
+                if (false) // This takes very long for huge data
+                {
+                    // Create the KdTree object for the search method of the extraction
+                    tree->setInputCloud (filtered);
+                    // specify euclidean cluster parameters
+                    ec.setClusterTolerance (0.02); // 2cm
+                    ec.setMinClusterSize (100);
+                    ec.setMaxClusterSize (25000);
+                    ec.setSearchMethod (tree);
+                    ec.setInputCloud (filtered);
+                    // exctract the indices pertaining to each cluster and store in a vector of pcl::PointIndices
+                    ec.extract (cluster_indices);
+                    std::cerr << "Found clusters: " << cluster_indices.size() << std::endl;
+                }
+#endif
+
+
+                // 3. region growing
+                // 4. Iterative Closest Point (registration or recognition)
 
 
 #if (PCL_VIEWER == 1)
-//                pcl::VoxelGrid<pcl::PointXYZ> voxel_grid;
-//                voxel_grid.setInputCloud (pointcloud);
-//                voxel_grid.setLeafSize (0.05, 0.05, 0.05);
-//                voxel_grid.filter(*cloud_downsampled);
-//                m_viewer_clouds.at(i) = cloud_downsampled;
-                   m_viewer_clouds.at(i) = pointcloud;
+                //                pcl::VoxelGrid<pcl::PointXYZ> voxel_grid;
+                //                voxel_grid.setInputCloud (pointcloud);
+                //                voxel_grid.setLeafSize (0.05, 0.05, 0.05);
+                //                voxel_grid.filter(*cloud_downsampled);
+                //                m_viewer_clouds.at(i) = cloud_downsampled;
+                m_viewer_mtx.lock();
+                m_viewer_clouds.at(i) = filtered;
+                m_viewer_mtx.unlock();
 #endif
             }
 
@@ -51,69 +146,16 @@ void PclInterface::pc_proc_thread_func()
             continue;
         }
 #if (VERBOSE > 0)
-        std::cout << "(PclInterface) Processing thread " << std::this_thread::get_id() << " took " << std::chrono::duration_cast
-                     <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
+        auto pcl_proc_end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(pcl_proc_end-pcl_proc_start).count();
+
+        proc_times.push_back(duration);
+        if (proc_times.size() > max_times)
+            proc_times.pop_front();
+
+        double average = std::accumulate(proc_times.begin(), proc_times.end(), 0.0) / proc_times.size() ;
+        std::cout << "(PclInterface) Processing thread took (avg) " << std::fixed << std::setprecision(2) << average << " ms" << std::endl;
 #endif
-
-
-        //        if (m_clouds_read_idx != m_clouds_write_idx)
-        //        {
-        //            // Read from pcl::PointCloud buffer
-        //            m_pcl_cvt_mtx->lock();
-        //            m_proc_cloud = m_clouds_buffer.at(m_clouds_read_idx++);
-        //            if (m_clouds_read_idx == BUF_SIZE_CLOUDS-1)
-        //                m_clouds_read_idx = 0;
-        //            m_pcl_cvt_mtx->unlock();
-        //            cout << "(PCL) Increased read index: " << m_clouds_read_idx << " size " << m_proc_cloud->size() << endl;
-        //            // PCL processing
-        //            pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
-        //            pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
-        //            pcl::SACSegmentation<pcl::PointXYZ> seg;
-        //            seg.setOptimizeCoefficients (true);
-        //            seg.setModelType (pcl::SACMODEL_PLANE);
-        //            seg.setMethodType (pcl::SAC_RANSAC);
-        //            seg.setDistanceThreshold (0.01);
-        //            seg.setInputCloud (m_proc_cloud);
-        //            seg.segment (*inliers, *coefficients);
-        //            if (inliers->indices.size () == 0)
-        //            {
-        //                PCL_ERROR ("Could not estimate a planar model for the given dataset.");
-        //            }
-        //            std::cerr << "Model data size: " << m_proc_cloud->size() << std::endl;
-        //            std::cerr << "Model coefficients: " << coefficients->values[0] << " "
-        //                      << coefficients->values[1] << " "
-        //                      << coefficients->values[2] << " "
-        //                      << coefficients->values[3] << std::endl;
-        //            std::cerr << "Model inliers: " << inliers->indices.size() << std::endl;
-        //            // Extract found surface
-        //            pcl::ExtractIndices<pcl::PointXYZ> extract;
-        //            extract.setInputCloud (m_proc_cloud);
-        //            extract.setIndices (inliers);
-        //            extract.setNegative (false);
-        //            extract.filter(*m_filtered_cloud);
-        //            std::cerr << "Extracted surface: " << m_filtered_cloud->size() << std::endl;
-        //            if (false) // This takes very long for huge data
-        //            {
-        //                // Create the KdTree object for the search method of the extraction
-        //                pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
-        //                tree->setInputCloud (m_filtered_cloud);
-        //                // create the extraction object for the clusters
-        //                std::vector<pcl::PointIndices> cluster_indices;
-        //                pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-        //                // specify euclidean cluster parameters
-        //                ec.setClusterTolerance (0.02); // 2cm
-        //                ec.setMinClusterSize (100);
-        //                ec.setMaxClusterSize (25000);
-        //                ec.setSearchMethod (tree);
-        //                ec.setInputCloud (m_filtered_cloud);
-        //                // exctract the indices pertaining to each cluster and store in a vector of pcl::PointIndices
-        //                ec.extract (cluster_indices);
-        //                std::cerr << "Found clusters: " << cluster_indices.size() << std::endl;
-        //            }
-        //        }
-        //        else {
-        //            std::this_thread::sleep_for(std::chrono::milliseconds(DELAY_PROC));
-        //        }
     }
     std::cout << "(PclInterface) Exiting thread" << std::endl;
 }

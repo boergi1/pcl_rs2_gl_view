@@ -17,9 +17,9 @@ HEADERS += \
     customtypes.h \
     deviceinterface.h \
     format.h \
-    glgraphics.hpp \
     ocvdevice.h \
     pclinterface.h \
+    rs2_glgraphics.hpp \
     rs2_pcl_converter.h \
     rs2device.h \
     third-party/stb_easy_font.h \

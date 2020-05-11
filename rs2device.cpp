@@ -119,7 +119,7 @@ void Rs2Device::rs2_capture_thread_func()
     rs2::pipeline rs2_pipe;
     rs2::config rs2_cfg;
     rs2_cfg.enable_device(serial);
-    rs2_cfg.enable_stream(RS2_STREAM_DEPTH, RS_FRAME_WIDTH, RS_FRAME_HEIGHT, RS2_FORMAT_Z16, RS_FRAME_RATE);
+    rs2_cfg.enable_stream(RS2_STREAM_DEPTH, RS_FRAME_WIDTH_DEPTH, RS_FRAME_HEIGHT_DEPTH, RS2_FORMAT_Z16, RS_FRAME_RATE_DEPTH);
 #if (RS_COLOR_ENABLED == 0)
     rs2_cfg.disable_stream(RS2_STREAM_COLOR);
 #else
@@ -216,26 +216,26 @@ void Rs2Device::rs2_capture_thread_func()
             std::cout << " TS: " << depth_frame.get_timestamp() << " (" << depth_frame.get_frame_number() << "), size: "
                       << depth_frame.get_data_size() << " bytes" << std::endl;
 
-            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_FRAME_TIMESTAMP) )
-            {
-                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_FRAME_TIMESTAMP);
-                std::cout << "DEBUG RS2_FRAME_METADATA_FRAME_TIMESTAMP (usec) " << metadata << std::endl;
-            }
-            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_SENSOR_TIMESTAMP) )
-            {
-                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_SENSOR_TIMESTAMP);
-                std::cout << "DEBUG RS2_FRAME_METADATA_SENSOR_TIMESTAMP (usec) " << metadata << std::endl;
-            }
-            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL) )
-            {
-                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL);
-                std::cout << "DEBUG RS2_FRAME_METADATA_TIME_OF_ARRIVAL (msec)" << metadata << std::endl;
-            }
-            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP) )
-            {
-                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP);
-                std::cout << "DEBUG RS2_FRAME_METADATA_BACKEND_TIMESTAMP (msec) " << metadata << std::endl;
-            }
+//            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_FRAME_TIMESTAMP) )
+//            {
+//                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_FRAME_TIMESTAMP);
+//                std::cout << "DEBUG RS2_FRAME_METADATA_FRAME_TIMESTAMP (usec) " << metadata << std::endl;
+//            }
+//            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_SENSOR_TIMESTAMP) )
+//            {
+//                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_SENSOR_TIMESTAMP);
+//                std::cout << "DEBUG RS2_FRAME_METADATA_SENSOR_TIMESTAMP (usec) " << metadata << std::endl;
+//            }
+//            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL) )
+//            {
+//                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL);
+//                std::cout << "DEBUG RS2_FRAME_METADATA_TIME_OF_ARRIVAL (msec)" << metadata << std::endl;
+//            }
+//            if ( depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP) )
+//            {
+//                rs2_metadata_type metadata = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP);
+//                std::cout << "DEBUG RS2_FRAME_METADATA_BACKEND_TIMESTAMP (msec) " << metadata << std::endl;
+//            }
 #endif
 #if (VERBOSE > 0)
             auto cap_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-cap_start).count();

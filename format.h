@@ -2,20 +2,23 @@
 #define FORMAT_H
 
 // Verbosity level
-#define VERBOSE 0
+#define VERBOSE 1
 // Makros
 #define degreesToRadians(angleDegrees) ((angleDegrees) * M_PI / 180.0)
 #define radiansToDegrees(angleRadians) ((angleRadians) * 180.0 / M_PI)
 
 // Realsense acquisition
-#define RS_FRAME_WIDTH 1280 //1280 //640
-#define RS_FRAME_HEIGHT 720 //720 //480
-#define RS_FRAME_RATE 30 //15 //30
+#define RS_DEPTH_ENABLED 1
+#define RS_COLOR_ENABLED 0
 
-#define RS_FRAME_PERIOD_MS 1000/RS_FRAME_RATE
-#define RS_FRAME_PERIOD_NS 1000000/RS_FRAME_RATE
+#define RS_FRAME_WIDTH_DEPTH 1280 //1280 //640
+#define RS_FRAME_HEIGHT_DEPTH 720 //720 //480
+#define RS_FRAME_RATE_DEPTH 30 //15 //30
 
-#define RS_FRAME_POINTS_COUNT RS_FRAME_WIDTH*RS_FRAME_HEIGHT
+#define RS_FRAME_PERIOD_MS 1000/RS_FRAME_RATE_DEPTH
+#define RS_FRAME_PERIOD_NS 1000000/RS_FRAME_RATE_DEPTH
+
+#define RS_FRAME_POINTS_COUNT RS_FRAME_WIDTH_DEPTH*RS_FRAME_HEIGHT_DEPTH
 
 #define RS_EMITTER_ENABLED 1.f
 #define RS_EMITTER_POWER 1.f
@@ -23,8 +26,31 @@
 #define RS_MASTER_SLAVE_CONFIG 1
 #define RS_FILTER_FRAMES 0
 
-#define RS_DEPTH_ENABLED 0
-#define RS_COLOR_ENABLED 1
+// RS0 central
+#define RS_CENTRAL_SERIAL "950122060662"
+//#define TRAN_RS0_TO_CV0_X_M 3.0
+//#define TRAN_RS0_TO_CV0_Y_M 0.0
+//#define TRAN_RS0_TO_CV0_Z_M 0.1
+//#define ROT_RS0_TO_CV0_X_ANG 0.0
+//#define ROT_RS0_TO_CV0_Y_ANG 0.0
+//#define ROT_RS0_TO_CV0_Z_ANG 0.0
+// RS1 front
+#define RS_FRONT_SERIAL "950122060486"
+#define TRAN_RS1_TO_RS0_X_M 0.0
+#define TRAN_RS1_TO_RS0_Y_M -0.020
+#define TRAN_RS1_TO_RS0_Z_M -0.010
+#define ROT_RS1_TO_RS0_X_ANG -60.0
+//#define ROT_RS1_TO_RS0_Y_ANG 0.0
+//#define ROT_RS1_TO_RS0_Z_ANG 0.0
+// RS2 rear
+#define RS_REAR_SERIAL "950122061070"
+#define TRAN_RS2_TO_RS0_X_M 0.0
+#define TRAN_RS2_TO_RS0_Y_M 0.020
+#define TRAN_RS2_TO_RS0_Z_M -0.010
+#define ROT_RS2_TO_RS0_X_ANG 60.0
+//#define ROT_RS2_TO_RS0_Y_ANG 0.0
+//#define ROT_RS2_TO_RS0_Z_ANG 0.0
+
 // OpenCV acquisition
 #define CV_FRAME_WIDTH 1280  //1600
 #define CV_FRAME_HEIGHT 720 //1200
@@ -32,8 +58,6 @@
 #define CV_FRAME_PERIOD_MS 1000/CV_FRAME_RATE
 #define CV_REF_PIXEL 60
 #define CV_REF_SIZE_MM 26
-// Converter
-#define CONV_SPLIT_DATA 0
 
 /*
   opencv cam: x,y (2d) same direction as central rs2, but after conversion to 3d point cs is in cam center
@@ -43,33 +67,19 @@
   opencv cam: x,y (2d) same direction as central rs2, but after conversion to 3d point cs is in cam center
             rotation and translation will change later
 */
-// RS0 central
-#define RS_CENTRAL_SERIAL "950122060662"
-#define TRAN_RS0_TO_CV0_X_M 3.0
-#define TRAN_RS0_TO_CV0_Y_M 0.0
-#define TRAN_RS0_TO_CV0_Z_M 0.1
-#define ROT_RS0_TO_CV0_X_ANG 0.0
-//#define ROT_RS0_TO_CV0_Y_ANG 0.0
-//#define ROT_RS0_TO_CV0_Z_ANG 0.0
-// RS1 front
-#define RS_FRONT_SERIAL "950122060486"
-#define TRAN_RS1_TO_RS0_X_M 0.0
-#define TRAN_RS1_TO_RS0_Y_M -0.020
-#define TRAN_RS1_TO_RS0_Z_M -0.010
-//#define ROT_RS1_TO_RS0_X_ANG -0.090
-#define ROT_RS1_TO_RS0_X_ANG -90.0
-//#define ROT_RS1_TO_RS0_Y_ANG 0.0
-//#define ROT_RS1_TO_RS0_Z_ANG 0.0
-// RS2 rear
-#define RS_REAR_SERIAL "950122061070"
-#define TRAN_RS2_TO_RS0_X_M 0.0
-#define TRAN_RS2_TO_RS0_Y_M 0.020
-#define TRAN_RS2_TO_RS0_Z_M -0.010
-//#define ROT_RS2_TO_RS0_X_ANG 0.090
-#define ROT_RS2_TO_RS0_X_ANG 90.0
-//#define ROT_RS2_TO_RS0_Y_ANG 0.0
-//#define ROT_RS2_TO_RS0_Z_ANG 0.0
 
+// Converter
+#define CONV_THREAD_POOL_SIZE 7
+#define CONV_SPLIT_DATA 0 // not yet implemented
+// PCL processing
+#define PCL_FILTER_REGION 1
+#if (PCL_FILTER_REGION > 0)
+#define PCL_FILTER_REGION_X_M 1 // +-
+#define PCL_FILTER_REGION_Y_M 5 // +-
+#define PCL_FILTER_REGION_Z_M 3
+#endif
+
+#define PCL_REMOVE_PLANE 1
 
 
 // Buffer sizes
@@ -89,8 +99,12 @@
 #define DELAY_TRAC CV_FRAME_PERIOD_MS/2
 #define DELAY_SHOW CV_FRAME_PERIOD_MS/2
 // Toggle viewers
-#define PCL_VIEWER 0
+#define PCL_VIEWER 1
 #define IMSHOW_CV 1
+
+#define GL_DRAW_POINTCLOUD 0
+#define GL_DRAW_MOSAIC 0
+
 
 
 

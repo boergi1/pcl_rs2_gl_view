@@ -77,12 +77,13 @@ public:
 };
 
 #define MAX_TASKS_IN_OUTPUT 300
-#define THREAD_POOL_SIZE 7 // Using Max ( (2x Physical Core Count) - 1 ) looks like a good idea
+//#define THREAD_POOL_SIZE 7 // Using Max ( (2x Physical Core Count) - 1 ) looks like a good idea
 #define ROUND_ROBIN 1
 
 class ThreadController
 {
 private:
+    int m_thread_pool_size;
     //void *workerThread( void *ptr );
 protected:
     std::vector<ThreadInterface*> m_thread_pool;
@@ -97,7 +98,7 @@ public:
 
     virtual ~ThreadController();
 
-    virtual void init();
+    virtual void init(int thread_pool_size);
 
     void addTask(BaseTask* task);
     BaseTask* getTask()

@@ -67,6 +67,7 @@ public:
     void process() override;
 
 private:
+    rs2_extrinsics m_extrinsics_front, m_extrinsics_rear;
 
     inline void rs2_transform_point_to_point_custom(float* to_point, const struct rs2_extrinsics* extrin, const float* from_point);
 
@@ -103,7 +104,7 @@ public:
 
     virtual ~Rs2_PCL_Converter() override;
 
-    void init() override;
+    void init(int ThreadPoolSize) override;
 
     void setActive(bool running)
     {

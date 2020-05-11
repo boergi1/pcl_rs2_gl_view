@@ -6,7 +6,7 @@ void Rs2_PCL_Converter::converter_thread_func()
 
     //    m_active = true;
     while (m_active) {
-        // bool idle = true;
+        bool idle = true;
         // Read from RealSense2 Devices and generate tasks
         for (size_t i = 0; i < m_ref_to_rs2_queues->size(); i++)
         {
@@ -15,6 +15,7 @@ void Rs2_PCL_Converter::converter_thread_func()
 
             while ( !queue->isEmpty() )
             {
+                idle = false;
                 rs2::frame tmp_rs2_frame = queue->getFrame();
                 FrameToPointsTask* task_f2p = new FrameToPointsTask();
                 task_f2p->setTaskType(TaskType_t::TSKTYPE_F2P);
@@ -22,7 +23,7 @@ void Rs2_PCL_Converter::converter_thread_func()
                 task_f2p->setTaskStatus(BaseTask::WORK_TO_DO);
                 task_f2p->in.push_back(tmp_rs2_frame);
                 this->addTask(task_f2p);
-#if (VERBOSE > 0)
+#if (VERBOSE > 1)
                 std::cout << "(Converter) Added TASK \"F2P\" (" << tmp_rs2_frame.get_frame_number() << ") size in: "
                           << task_f2p->in.size() << "x" << tmp_rs2_frame.get_data_size() << " addr: " << &task_f2p << std::endl;
 #endif
@@ -47,7 +48,7 @@ void Rs2_PCL_Converter::converter_thread_func()
         // std::cout << "(Converter) Handle " << this->OutputQueue.size() << " finished tasks" << std::endl;
         while(this->OutputQueue.size())
         {
-            //  idle = false;
+            idle = false;
             BaseTask* tmp_task = getTask();
             auto taskid = tmp_task->getTaskId();
             if (tmp_task->getTaskStatus() == BaseTask::TaskStatus_t::TASK_DONE)
@@ -67,7 +68,7 @@ void Rs2_PCL_Converter::converter_thread_func()
                             task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
                             task_p2c->in.push_back(tuple);
                             this->addTask(task_p2c);
-#if (VERBOSE > 0)
+#if (VERBOSE > 1)
                             std::cout << "(Converter) Added TASK \"P2C\" CENTRAL (" << std::get<0>(tuple).get_frame_number() << ") size in: "
                                       << task_p2c->in.size() << " addr: " << &task_p2c << std::endl;
 #endif
@@ -104,7 +105,7 @@ void Rs2_PCL_Converter::converter_thread_func()
                             task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
                             task_p2c->in.push_back(tuple);
                             this->addTask(task_p2c);
-#if (VERBOSE > 0)
+#if (VERBOSE > 1)
                             std::cout << "(Converter) Added TASK \"P2C\" FRONT/REAR (" << std::get<0>(tuple).get_frame_number() << ") size in: "
                                       << task_p2c->in.size() << " addr: " << &task_p2c << std::endl;
 #endif
@@ -138,7 +139,7 @@ void Rs2_PCL_Converter::converter_thread_func()
                                 if ( taskid == cloudqueue->getCameraType())
                                 {
                                     cloudqueue->addCloudT(cloudtuple);
-#if (VERBOSE > 0)
+#if (VERBOSE > 1)
                                     std::cout << "(Converter) Added Cloud to queue " << taskid << " (" << std::get<2>(cloudtuple) << ") size: " << std::get<0>(cloudtuple)->size() << std::endl;
 #endif
                                 }
@@ -154,13 +155,12 @@ void Rs2_PCL_Converter::converter_thread_func()
                 default: break;
 
                 }
-                delete tmp_task; // -> ??????
+                delete tmp_task;
             }
             else std::cerr << "(Converter) Task in output queue not ready" << std::endl;
 
         }
-        std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_CONV_POLL_NS));
-        // if (idle) std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_CONV_POLL_NS));
+        if (idle) std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_CONV_POLL_NS));
     }
 }
 
@@ -183,21 +183,32 @@ Rs2_PCL_Converter::~Rs2_PCL_Converter()
 
 }
 
-void Rs2_PCL_Converter::init()
+void Rs2_PCL_Converter::init(int ThreadPoolSize)
 {
-    ThreadController::init();
+#if (VERBOSE > 0)
+    std::cout << std::endl <<"(Converter) Initializing " << ThreadPoolSize << " threads"<<std::endl;
+#endif
+    ThreadController::init(ThreadPoolSize);
 }
 
 bool Rs2_PCL_Converter::isActive() { return m_active; }
 
 PointsToCloudTask::PointsToCloudTask()
 {
-
+    m_extrinsics_front;
+    m_extrinsics_rear;
+//    float rad = static_cast<float>(degreesToRadians(ROT_RS1_TO_RS0_X_ANG));
+//    rs2_extrinsics extrinsics_T_Rx;
+//    extrinsics_T_Rx.rotation[0] = 1; extrinsics_T_Rx.rotation[3] = 0;             extrinsics_T_Rx.rotation[6] = 0;
+//    extrinsics_T_Rx.rotation[1] = 0; extrinsics_T_Rx.rotation[4] = std::cos(rad); extrinsics_T_Rx.rotation[7] = -std::sin(rad);
+//    extrinsics_T_Rx.rotation[2] = 0; extrinsics_T_Rx.rotation[5] = std::sin(rad); extrinsics_T_Rx.rotation[8] = std::cos(rad);
+//    extrinsics_T_Rx.translation[0] = static_cast<float>(TRAN_RS1_TO_RS0_X_M);
+//    extrinsics_T_Rx.translation[1] = static_cast<float>(TRAN_RS1_TO_RS0_Y_M);
+//    extrinsics_T_Rx.translation[2] = static_cast<float>(TRAN_RS1_TO_RS0_Z_M);
 }
 
 PointsToCloudTask::~PointsToCloudTask()
 {
-    // todo
 }
 
 void PointsToCloudTask::process()

@@ -16,9 +16,13 @@
 
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h> // ?
-#include <pcl/filters/voxel_grid.h>
 
+//#include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/crop_box.h>
+#include <pcl/filters/extract_indices.h>
+#include <pcl/filters/conditional_removal.h>
+
 #include <pcl/ModelCoefficients.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/sample_consensus/method_types.h>
@@ -26,7 +30,7 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/segmentation/extract_clusters.h>
 
-#include <pcl/filters/extract_indices.h>
+
 
 #include "format.h"
 #include "customtypes.h"
@@ -65,7 +69,20 @@ public:
         {
             std::cerr << "(CloudDeque) is empty" << std::endl;
             return *m_cqueue.end();
-           // return std::make_tuple(nullptr, NULL, NULL);
+            // return std::make_tuple(nullptr, NULL, NULL);
+        }
+    }
+    const std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> readCloudT()
+    {
+        if (m_cqueue.size())
+        {
+            const auto cloud = m_cqueue.front();
+            return cloud;
+        }
+        else
+        {
+            std::cerr << "(CloudDeque) is empty" << std::endl;
+            return *m_cqueue.end();
         }
     }
     bool isEmpty() { return m_cqueue.size() == 0; }
@@ -94,6 +111,7 @@ private:
 #if (PCL_VIEWER == 1)
     pcl::visualization::CloudViewer m_pcl_viewer;
     std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr > m_viewer_clouds;
+    std::mutex m_viewer_mtx;
 #endif
 
     void pc_proc_thread_func();
@@ -109,15 +127,21 @@ public:
     std::function<void (pcl::visualization::PCLVisualizer&)> viewer_callback = [](pcl::visualization::PCLVisualizer& viewer)
     {
         viewer.setBackgroundColor (1.0, 0.5, 1.0);
+#if (PCL_FILTER_REGION > 1)
+        viewer.addCube(-PCL_FILTER_REGION_X_M, PCL_FILTER_REGION_X_M, -PCL_FILTER_REGION_Y_M, PCL_FILTER_REGION_Y_M, 0.0, PCL_FILTER_REGION_Z_M, 1, 0, 0, "cropregion");
+        viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_WIREFRAME, "cropregion");
+#endif
     };
     std::function<void (pcl::visualization::PCLVisualizer&)> viewer_update_callback = [this](pcl::visualization::PCLVisualizer& viewer)
     {
-#if (VERBOSE > 1)
+#if (VERBOSE > 0)
         auto start = std::chrono::high_resolution_clock::now();
 #endif
         bool idle = true;
         for (size_t i=0; i< m_viewer_clouds.size(); i++) {
+            m_viewer_mtx.lock();
             auto cloud = m_viewer_clouds.at(i);
+            m_viewer_mtx.unlock();
             if (cloud != nullptr && !cloud->empty())
             {
                 idle = false;
@@ -125,8 +149,8 @@ public:
                 if(!viewer.updatePointCloud<pcl::PointXYZ>(cloud, pc_id))
                 {
                     viewer.addPointCloud<pcl::PointXYZ>(cloud, pc_id);
-                    viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 5, pc_id);
-                    viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_COLOR, 255, pc_id);
+                    viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, pc_id);
+                    //      viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_COLOR, 255, pc_id);
                     //  viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT_JET, 0, 255, "rs_cloud" );
                     //                viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT,
                     //                                                        pcl::visualization::PCL_VISUALIZER_LUT_JET, "rs_cloud");
@@ -139,7 +163,7 @@ public:
             return;
         }
         viewer.spinOnce(RS_FRAME_PERIOD_MS);
-#if (VERBOSE > 1)
+#if (VERBOSE > 0)
         std::cout << "(PclInterface) Visualization callback from thread " << std::this_thread::get_id() << " took " << std::chrono::duration_cast
                      <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
 #endif

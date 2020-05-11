@@ -2,7 +2,7 @@
 #include "deviceinterface.h"
 #include "rs2_pcl_converter.h"
 #include "pclinterface.h"
-#include "glgraphics.hpp"
+#include "rs2_glgraphics.hpp"
 
 #include <librealsense2/rs.hpp> // Include RealSense Cross Platform API
 
@@ -27,7 +27,7 @@ int main() try
 #if (RS_DEPTH_ENABLED > 0)
         pcl_interface = new PclInterface(rs2_device_types);
         rs2_pcl_conv = new Rs2_PCL_Converter(device_interface, pcl_interface, rs2_device_types);
-        rs2_pcl_conv->init(); // start multiple workerthreads
+        rs2_pcl_conv->init(CONV_THREAD_POOL_SIZE); // start multiple workerthreads
 #endif
         device_interface->startRecordingRs2Devices();
 #if (RS_DEPTH_ENABLED > 0)
@@ -37,10 +37,9 @@ int main() try
     }
     else std::cerr << "No Realsense device found" << std::endl;
 
-
     // device_interface->connectVideoDevice(2);
 
-
+#if (GL_DRAW_MOSAIC > 0)
     std::map<std::string, rs2::colorizer> colorizers;
     for (auto camtype : rs2_device_types)
     {
@@ -57,19 +56,17 @@ int main() try
         default: break;
         }
     }
-
     std::map<int, rs2::frame> render_frames;
-
     window app(1280, 960, "CPP Multi-Camera Example");
+    //    glfw_state app_state;
+    //    register_glfw_callbacks(app, app_state);
 
     while (app) {
-        //  std::cout << "Main thread" << std::endl;
 #if (VERBOSE > 0)
         auto draw_start = std::chrono::high_resolution_clock::now();
 #endif
 
         std::vector<rs2::frame> new_frames;
-
 #if (RS_DEPTH_ENABLED > 0)
         auto depth_data = device_interface->getDepthFrameData();
         for (FrameQueue* queue_d : *depth_data)
@@ -80,7 +77,6 @@ int main() try
         for (FrameQueue* queue_c : *color_data)
             if ( !queue_c->isEmpty() ) new_frames.emplace_back(queue_c->getFrame());
 #endif
-
         // Convert the newly-arrived frames to render-friendly format
         for (const auto& frame : new_frames)
         {
@@ -89,16 +85,49 @@ int main() try
             // Apply the colorizer of the matching device and store the colorized frame
             render_frames[frame.get_profile().unique_id()] = colorizers[serial].process(frame);
         }
-
         // Present all the collected frames with openGl mosaic
         app.show(render_frames);
+        std::this_thread::sleep_for(std::chrono::nanoseconds(100));
+
+        //#if (GL_DRAW_POINTCLOUD > 0)
+        //#if (GL_DRAW_DEPTH > 0)
+        //        auto depth_data = pcl_interface->getInputCloudsRef();
+        //        for (auto queue_d : *depth_data)
+        //        {
+        //            if ( !queue_d->isEmpty() )
+        //            {
+        //                pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = std::get<0>(queue_d->readCloudT());
+        //            }
+        //        }
+        //#endif
+        //#if (GL_DRAW_COLOR > 0)
+        //        auto color_data = device_interface->getColorFrameData();
+        //        for (FrameQueue* queue_c : *color_data)
+        //        {
+        //            if ( !queue_c->isEmpty() )
+        //            {
+        //                rs2::frame color_frame = queue_c->getFrame();
+        //            }
+        //        }
+        //#endif
+        //#endif
+
 #if (VERBOSE > 0)
         auto draw_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-draw_start).count();
         std::cout << "Main thread took " << draw_end << " ms" << std::endl;
 #endif
-        std::this_thread::sleep_for(std::chrono::nanoseconds(100));
+
+
 
     }
+#else
+    while(true)
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+#endif
+
+
 
     delete pcl_interface;
     delete rs2_pcl_conv;

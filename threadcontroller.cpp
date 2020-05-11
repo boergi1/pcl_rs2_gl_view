@@ -42,12 +42,10 @@ ThreadController::~ThreadController()
 
 }
 
-void ThreadController::init()
+void ThreadController::init(int thread_pool_size)
 {
-#if (VERBOSE > 0)
-    std::cout << std::endl <<"(ThreadController) Initializing " << THREAD_POOL_SIZE << " threads"<<std::endl;
-#endif
-    for (int i = 0; i<THREAD_POOL_SIZE; i++)
+    m_thread_pool_size = thread_pool_size;
+    for (int i = 0; i<m_thread_pool_size; i++)
     {
         m_thread_pool.push_back(new ThreadInterface(this));
         m_thread_pool.back()->thr = std::thread(workerThread, static_cast<void*>(m_thread_pool.back()));
@@ -85,7 +83,7 @@ void ThreadController::addTask(BaseTask *task)
 #endif
     m_thread_pool.at(tIdx)->mtx.unlock();
     // pthread_mutex_unlock( &interfaces.at(tIdx)->mutex );
-    if (++tIdx == THREAD_POOL_SIZE )
+    if (++tIdx == m_thread_pool_size )
         tIdx = 0;
 }
 

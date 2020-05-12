@@ -30,6 +30,8 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/segmentation/extract_clusters.h>
 
+#include <pcl/features/normal_3d_omp.h>
+
 
 
 #include "format.h"

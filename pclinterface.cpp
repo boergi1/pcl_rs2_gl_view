@@ -38,11 +38,22 @@ void PclInterface::pc_proc_thread_func()
     pcl::SACSegmentation<pcl::PointXYZ> seg;
     pcl::ExtractIndices<pcl::PointXYZ> extract;
     seg.setOptimizeCoefficients (true);
-    seg.setModelType (pcl::SACMODEL_PLANE);
+    seg.setModelType (pcl::SACMODEL_PERPENDICULAR_PLANE); // pcl::SACMODEL_PLANE
     seg.setMethodType (pcl::SAC_RANSAC);
     seg.setDistanceThreshold (0.01);
+    Eigen::Vector3f seg_vertical_axis;
+    seg_vertical_axis << 0, 0, 1;
+
+    pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> ne;
+ //   pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::PointXYZ> ne_omp; // undefined reference to computeFeature
+ //   ne_omp.setNumberOfThreads(8);
+   // pcl::NormalEstimationOMP<PointXYZRGB, PointNormal> ne;
+    pcl::SACSegmentationFromNormals<pcl::PointXYZ, pcl::Normal> seg_n;
+        pcl::search::Search<pcl::PointXYZ>::Ptr tree_n;
+    pcl::PointCloud<pcl::Normal>::Ptr cloud_normals (new pcl::PointCloud<pcl::Normal>);
 
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+
     std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
 #endif
@@ -66,7 +77,7 @@ void PclInterface::pc_proc_thread_func()
                 auto ts = std::get<1>(cloudt);
                 auto ctr = std::get<2>(cloudt);
 #if (VERBOSE > 0)
-                std::cout << "(PclInterface) PointCloud received from camera " << camType << "(" << ctr << "), size: " << pointcloud->size() << std::endl;
+                std::cout << "(PclInterface) PointCloud received from camera " << camType << " (" << ctr << "), organized: " << pointcloud->isOrganized() << " size: " << pointcloud->size() << std::endl;
 #endif
 
                 // 1. pcl::PassThrough() +y = conveyor dir, z+ = conveyor dist, x = conveyor width
@@ -86,13 +97,98 @@ void PclInterface::pc_proc_thread_func()
 
 
                 // 2. remove planar surface
-#if (PCL_REMOVE_PLANE > 0)  // > 2s (3xtotal)
-                seg.setInputCloud (pointcloud);
-                seg.segment (*inliers, *coefficients);
+#if (PCL_REMOVE_PLANE > 0)
+                /* without axis: > 2s (3xtotal)
+                 * with axis: > 200ms
+                 *
+                 *
+                 */
+//               // pcl::SACSegmentationFromNormals()
+
+                std::cout << "(PclInterface) DEBUG before normals " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
+
+
+                // Estimate point normals
+
+//                //The smallest scale to use in the DoN filter.
+//                double scale1;
+//                //The largest scale to use in the DoN filter.
+//                double scale2;
+//                //The minimum DoN magnitude to threshold by
+//                double threshold;
+//                //segment scene into clusters with given distance tolerance using euclidean clustering
+//                double segradius;
+
+//                if (pointcloud->isOrganized ())
+//                {
+//                  tree_n.reset (new pcl::search::OrganizedNeighbor<pcl::PointXYZ> ());
+//                }
+//                else
+//                {
+//                  tree_n.reset (new pcl::search::KdTree<pcl::PointXYZ> (false));
+//                }
+//                tree_n->setInputCloud(pointcloud);
+//                ne_omp.setInputCloud(pointcloud);
+//                ne_omp.setSearchMethod(tree_n);
+//                /*
+//                 * NOTE: setting viewpoint is very important, so that we can ensure
+//                 * normals are all pointed in the same direction!
+//                 */
+//                ne_omp.setViewPoint (std::numeric_limits<float>::max (), std::numeric_limits<float>::max (), std::numeric_limits<float>::max ());
+
+//                pcl::NormalEstimationOMP< pcl::PointXYZ, pcl::PointXYZ >::PointCloudOut::Ptr omp_output (pcl::NormalEstimationOMP< pcl::PointXYZ, pcl::PointXYZ >::PointCloudOut);
+
+//                pcl::PointCloud<pcl::PointNormal>::Ptr normals_small_scale (new pcl::PointCloud<pcl::PointNormal>);
+//                ne_omp.setRadiusSearch (0.01);
+//               // ne_omp.compute (*normals_small_scale);
+//                ne_omp.compute (omp_output);
+
+
+
+
+//                ne.setSearchMethod (tree);
+//                ne.setInputCloud (pointcloud);
+//                ne.setKSearch (8);
+//                ne.compute (*cloud_normals);
+
+
+                std::cout << "(PclInterface) DEBUG after normals " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
+
+
+                // Create the segmentation object for the planar model and set all the parameters
+                seg_n.setOptimizeCoefficients (true);
+                seg_n.setModelType (pcl::SACMODEL_NORMAL_PLANE);
+                seg_n.setNormalDistanceWeight (0.1);
+                seg_n.setMethodType (pcl::SAC_RANSAC);
+                seg_n.setMaxIterations (100);
+                seg_n.setDistanceThreshold (0.03);
+                seg_n.setInputCloud (pointcloud);
+                seg_n.setInputNormals (cloud_normals);
+                // Obtain the plane inliers and coefficients
+                seg_n.segment (*inliers, *coefficients);
+
+
+                std::cout << "(PclInterface) DEBUG after segmentation " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
+
+
+
+//                seg.setInputCloud (pointcloud);
+//                seg.setDistanceThreshold(0.01);
+//                seg.setAxis(seg_vertical_axis);
+//                seg.setEpsAngle(pcl::deg2rad(10.0));
+//                // coeff contains the coefficients of the plane:
+//                // ax + by + cz + d = 0
+//                seg.segment (*inliers, *coefficients);
+
+
+
+
                 if (inliers->indices.size () == 0)
                     PCL_ERROR ("Could not estimate a planar model for the given dataset.");
 
-                // Remove found surface
+                std::cout << "(PclInterface) DEBUG after planar extraction " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
+
+                // Remove found surface -> 25ms
                 extract.setInputCloud (pointcloud);
                 extract.setIndices (inliers);
                 extract.setNegative (true);
@@ -119,6 +215,9 @@ void PclInterface::pc_proc_thread_func()
                     ec.extract (cluster_indices);
                     std::cerr << "Found clusters: " << cluster_indices.size() << std::endl;
                 }
+
+                std::cout << "(PclInterface) DEBUG after remove " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
+
 #endif
 
 

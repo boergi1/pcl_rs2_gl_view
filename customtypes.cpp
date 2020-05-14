@@ -18,12 +18,12 @@ int roundToInt(double val)
     return static_cast<int>(val);
 }
 
-bool areSameD(double a, double b)
-{
-    return fabs(a - b) < std::numeric_limits<double>::epsilon();
-}
+//bool areSameD(double a, double b)
+//{
+//    return fabs(a - b) < std::numeric_limits<double>::epsilon();
+//}
 
-bool areSameF(float a, float b)
-{
-    return fabs(a - b) < std::numeric_limits<float>::epsilon();
-}
+//bool areSameF(float a, float b)
+//{
+//    return fabs(a - b) < std::numeric_limits<float>::epsilon();
+//}

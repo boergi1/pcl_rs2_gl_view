@@ -84,7 +84,10 @@ private:
 
 
     //    std::vector<rs2::frame_queue>* m_ref_to_rs2_queues;
-    std::vector<FrameQueue*>* m_ref_to_rs2_queues;
+    std::vector<FrameQueue*>* m_ref_to_depth_queues;
+#if RS_COLOR_ENABLED
+    std::vector<FrameQueue*>* m_ref_to_color_queues;
+#endif
     std::vector<CloudQueue*>* m_ref_to_pcl_queues;
     std::vector<CameraType_t> m_cam_positions;
 

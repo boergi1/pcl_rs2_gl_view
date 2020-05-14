@@ -8,40 +8,30 @@ void Rs2_PCL_Converter::converter_thread_func()
     while (m_active) {
         bool idle = true;
         // Read from RealSense2 Devices and generate tasks
-        for (size_t i = 0; i < m_ref_to_rs2_queues->size(); i++)
+        for (size_t i = 0; i < m_ref_to_depth_queues->size(); i++)
         {
             //            auto &queue = m_ref_to_rs2_queues->at(i);
-            auto queue = m_ref_to_rs2_queues->at(i);
-
-            while ( !queue->isEmpty() )
+            auto queue_depth = m_ref_to_depth_queues->at(i);
+#if RS_COLOR_ENABLED
+            auto queue_color = m_ref_to_color_queues->at(i);
+#endif
+            while ( !queue_depth->isEmpty() )
             {
                 idle = false;
-                rs2::frame tmp_rs2_frame = queue->getFrame();
                 FrameToPointsTask* task_f2p = new FrameToPointsTask();
                 task_f2p->setTaskType(TaskType_t::TSKTYPE_F2P);
                 task_f2p->setTaskId(m_cam_positions.at(i));
                 task_f2p->setTaskStatus(BaseTask::WORK_TO_DO);
-                task_f2p->in.push_back(tmp_rs2_frame);
+                task_f2p->in.push_back(queue_depth->getFrame());
+#if RS_COLOR_ENABLED
+                task_f2p->in.push_back(queue_color->getFrame());
+#endif
                 this->addTask(task_f2p);
 #if (VERBOSE > 1)
                 std::cout << "(Converter) Added TASK \"F2P\" (" << tmp_rs2_frame.get_frame_number() << ") size in: "
                           << task_f2p->in.size() << "x" << tmp_rs2_frame.get_data_size() << " addr: " << &task_f2p << std::endl;
 #endif
             }
-            //            while ( queue.poll_for_frame(&tmp_rs2_frame) )
-            //            {
-            //                // idle = false;
-            //                FrameToPointsTask* task_f2p = new FrameToPointsTask();
-            //                task_f2p->setTaskType(TaskType_t::TSKTYPE_F2P);
-            //                task_f2p->setTaskId(m_cam_positions.at(i));
-            //                task_f2p->setTaskStatus(BaseTask::WORK_TO_DO);
-            //                task_f2p->in.push_back(tmp_rs2_frame);
-            //                this->addTask(task_f2p);
-            //#if (VERBOSE > 0)
-            //                std::cout << "(Converter) Added TASK \"F2P\" (" << tmp_rs2_frame.get_frame_number() << ") size in: "
-            //                          << task_f2p->in.size() << "x" << tmp_rs2_frame.get_data_size() << " addr: " << &task_f2p << std::endl;
-            //#endif
-            //            }
         }
 
         // Read tasks from output
@@ -167,7 +157,10 @@ void Rs2_PCL_Converter::converter_thread_func()
 
 Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, PclInterface *out_interface_ref, std::vector<CameraType_t> camera_types)
 {
-    m_ref_to_rs2_queues = in_interface_ref->getDepthFrameData();
+    m_ref_to_depth_queues = in_interface_ref->getDepthFrameData();
+#if RS_COLOR_ENABLED
+    m_ref_to_color_queues = in_interface_ref->getColorFrameData();
+#endif
 
     m_cam_positions = camera_types;
 
@@ -195,16 +188,70 @@ bool Rs2_PCL_Converter::isActive() { return m_active; }
 
 PointsToCloudTask::PointsToCloudTask()
 {
-    m_extrinsics_front;
-    m_extrinsics_rear;
-//    float rad = static_cast<float>(degreesToRadians(ROT_RS1_TO_RS0_X_ANG));
-//    rs2_extrinsics extrinsics_T_Rx;
-//    extrinsics_T_Rx.rotation[0] = 1; extrinsics_T_Rx.rotation[3] = 0;             extrinsics_T_Rx.rotation[6] = 0;
-//    extrinsics_T_Rx.rotation[1] = 0; extrinsics_T_Rx.rotation[4] = std::cos(rad); extrinsics_T_Rx.rotation[7] = -std::sin(rad);
-//    extrinsics_T_Rx.rotation[2] = 0; extrinsics_T_Rx.rotation[5] = std::sin(rad); extrinsics_T_Rx.rotation[8] = std::cos(rad);
-//    extrinsics_T_Rx.translation[0] = static_cast<float>(TRAN_RS1_TO_RS0_X_M);
-//    extrinsics_T_Rx.translation[1] = static_cast<float>(TRAN_RS1_TO_RS0_Y_M);
-//    extrinsics_T_Rx.translation[2] = static_cast<float>(TRAN_RS1_TO_RS0_Z_M);
+    float rad_front = static_cast<float>(degreesToRadians(ROT_FRONT_TO_CENTRAL_ANG));
+    float rad_rear = static_cast<float>(degreesToRadians(ROT_REAR_TO_CENTRAL_ANG));
+    if (CONV_RS_ROTATION_AXIS == "X" || CONV_RS_ROTATION_AXIS == "x")
+    {
+        m_extrinsics_front.rotation[0] = 1; m_extrinsics_front.rotation[3] = 0;             m_extrinsics_front.rotation[6] = 0;
+        m_extrinsics_front.rotation[1] = 0; m_extrinsics_front.rotation[4] = std::cos(rad_front); m_extrinsics_front.rotation[7] = -std::sin(rad_front);
+        m_extrinsics_front.rotation[2] = 0; m_extrinsics_front.rotation[5] = std::sin(rad_front); m_extrinsics_front.rotation[8] = std::cos(rad_front);
+        m_extrinsics_rear.rotation[0] = 1; m_extrinsics_rear.rotation[3] = 0;             m_extrinsics_rear.rotation[6] = 0;
+        m_extrinsics_rear.rotation[1] = 0; m_extrinsics_rear.rotation[4] = std::cos(rad_rear); m_extrinsics_rear.rotation[7] = -std::sin(rad_rear);
+        m_extrinsics_rear.rotation[2] = 0; m_extrinsics_rear.rotation[5] = std::sin(rad_rear); m_extrinsics_rear.rotation[8] = std::cos(rad_rear);
+    }
+    else if (CONV_RS_ROTATION_AXIS == "Y" || CONV_RS_ROTATION_AXIS == "y")
+    {
+        m_extrinsics_front.rotation[0] = std::cos(rad_front);  m_extrinsics_front.rotation[3] = 0; m_extrinsics_front.rotation[6] = std::sin(rad_front);
+        m_extrinsics_front.rotation[1] = 0;                    m_extrinsics_front.rotation[4] = 1; m_extrinsics_front.rotation[7] = 0;
+        m_extrinsics_front.rotation[2] = -std::sin(rad_front); m_extrinsics_front.rotation[5] = 0; m_extrinsics_front.rotation[8] = std::cos(rad_front);
+        m_extrinsics_rear.rotation[0] = std::cos(rad_rear);  m_extrinsics_rear.rotation[3] = 0; m_extrinsics_rear.rotation[6] = std::sin(rad_rear);
+        m_extrinsics_rear.rotation[1] = 0;                   m_extrinsics_rear.rotation[4] = 1; m_extrinsics_rear.rotation[7] = 0;
+        m_extrinsics_rear.rotation[2] = -std::sin(rad_rear); m_extrinsics_rear.rotation[5] = 0; m_extrinsics_rear.rotation[8] = std::cos(rad_rear);
+    }
+    else if (CONV_RS_ROTATION_AXIS == "Z" || CONV_RS_ROTATION_AXIS == "z")
+    {
+        m_extrinsics_front.rotation[0] = std::cos(rad_front); m_extrinsics_front.rotation[3] = -std::sin(rad_front); m_extrinsics_front.rotation[6] = 0;
+        m_extrinsics_front.rotation[1] = std::sin(rad_front); m_extrinsics_front.rotation[4] = std::cos(rad_front);  m_extrinsics_front.rotation[7] = 0;
+        m_extrinsics_front.rotation[2] = 0;                   m_extrinsics_front.rotation[5] = 0;                    m_extrinsics_front.rotation[8] = 1;
+        m_extrinsics_rear.rotation[0] = std::cos(rad_rear); m_extrinsics_rear.rotation[3] = -std::sin(rad_rear); m_extrinsics_rear.rotation[6] = 0;
+        m_extrinsics_rear.rotation[1] = std::sin(rad_rear); m_extrinsics_rear.rotation[4] = std::cos(rad_rear);  m_extrinsics_rear.rotation[7] = 0;
+        m_extrinsics_rear.rotation[2] = 0;                  m_extrinsics_rear.rotation[5] = 0;                   m_extrinsics_rear.rotation[8] = 1;
+    }
+    else
+    {
+        std::cerr << "(Converter) Invalid rotation axis specified" << std::endl;
+        m_extrinsics_front.rotation[0] = 1; m_extrinsics_front.rotation[3] = 0; m_extrinsics_front.rotation[6] = 0;
+        m_extrinsics_front.rotation[1] = 0; m_extrinsics_front.rotation[4] = 1; m_extrinsics_front.rotation[7] = 0;
+        m_extrinsics_front.rotation[2] = 0; m_extrinsics_front.rotation[5] = 0; m_extrinsics_front.rotation[8] = 1;
+        m_extrinsics_front.translation[0] = 0;
+        m_extrinsics_front.translation[1] = 0;
+        m_extrinsics_front.translation[2] = 0;
+        m_extrinsics_rear.rotation[0] = 1; m_extrinsics_rear.rotation[3] = 0; m_extrinsics_rear.rotation[6] = 0;
+        m_extrinsics_rear.rotation[1] = 0; m_extrinsics_rear.rotation[4] = 1; m_extrinsics_rear.rotation[7] = 0;
+        m_extrinsics_rear.rotation[2] = 0; m_extrinsics_rear.rotation[5] = 0; m_extrinsics_rear.rotation[8] = 1;
+        m_extrinsics_rear.translation[0] = 0;
+        m_extrinsics_rear.translation[1] = 0;
+        m_extrinsics_rear.translation[2] = 0;
+        return;
+    }
+
+    m_extrinsics_front.translation[0] = static_cast<float>(TRAN_FRONT_TO_CENTRAL_X_M);
+    m_extrinsics_front.translation[1] = static_cast<float>(TRAN_FRONT_TO_CENTRAL_Y_M);
+    m_extrinsics_front.translation[2] = static_cast<float>(TRAN_FRONT_TO_CENTRAL_Z_M);
+    m_extrinsics_rear.translation[0] = static_cast<float>(TRAN_REAR_TO_CENTRAL_X_M);
+    m_extrinsics_rear.translation[1] = static_cast<float>(TRAN_REAR_TO_CENTRAL_Y_M);
+    m_extrinsics_rear.translation[2] = static_cast<float>(TRAN_REAR_TO_CENTRAL_Z_M);
+
+#if (VERBOSE > 1)
+    std::cout << "Transformation matrix REAR:" << std::endl
+              << m_extrinsics_rear.rotation[0] << " " << m_extrinsics_rear.rotation[3] << " " << m_extrinsics_rear.rotation[6] << " " << m_extrinsics_rear.translation[0] << std::endl
+              << m_extrinsics_rear.rotation[1] << " " << m_extrinsics_rear.rotation[1] << " " << m_extrinsics_rear.rotation[7] << " " << m_extrinsics_rear.translation[1] << std::endl
+              << m_extrinsics_rear.rotation[2] << " " << m_extrinsics_rear.rotation[5] << " " << m_extrinsics_rear.rotation[8] << " " << m_extrinsics_rear.translation[2] << std::endl;
+    std::cout << "Transformation matrix FRONT:" << std::endl
+              << m_extrinsics_front.rotation[0] << " " << m_extrinsics_front.rotation[3] << " " << m_extrinsics_front.rotation[6] << " " << m_extrinsics_front.translation[0] << std::endl
+              << m_extrinsics_front.rotation[1] << " " << m_extrinsics_front.rotation[1] << " " << m_extrinsics_front.rotation[7] << " " << m_extrinsics_front.translation[1] << std::endl
+              << m_extrinsics_front.rotation[2] << " " << m_extrinsics_front.rotation[5] << " " << m_extrinsics_front.rotation[8] << " " << m_extrinsics_front.translation[2] << std::endl;
+#endif
 }
 
 PointsToCloudTask::~PointsToCloudTask()
@@ -213,21 +260,29 @@ PointsToCloudTask::~PointsToCloudTask()
 
 void PointsToCloudTask::process()
 {
+    // pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_POINTS_COUNT,1));
+    //    pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_WIDTH_DEPTH, RS_FRAME_HEIGHT_DEPTH));
     size_t i = 0;
-
-//    pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_POINTS_COUNT,1));
-    pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_WIDTH_DEPTH, RS_FRAME_HEIGHT_DEPTH));
-
     out.resize(in.size());
+#if (VERBOSE > 1)
+    auto start = std::chrono::high_resolution_clock::now();
+#endif
     while (in.size())
     {
         auto tuple = in.front();
         in.pop_front();
-        // points_to_pcl(tmp_points, pcl::PointCloud<pcl::PointXYZ>::Ptr(&tmp_pc));
-        points_to_pcl(std::get<0>(tuple), tmp_pc);
+        rs2::points tmp_points = std::get<0>(tuple);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>());
+        std::cout << "DEBUG " << tmp_points.size() << std::endl;
+        points_to_pcl(tmp_points, tmp_pc);
         out.at(i++) = std::make_tuple(tmp_pc, std::get<1>(tuple), std::get<2>(tuple));
     }
+#if (VERBOSE > 1)
+    std::cout << "(Converter) PointsToCloudTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") took " << std::chrono::duration_cast
+                 <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
+#endif
     this->setTaskStatus(TASK_DONE);
+
 }
 
 void PointsToCloudTask::rs2_transform_point_to_point_custom(float *to_point, const rs2_extrinsics *extrin, const float *from_point)
@@ -239,124 +294,52 @@ void PointsToCloudTask::rs2_transform_point_to_point_custom(float *to_point, con
 
 void PointsToCloudTask::points_to_pcl(const rs2::points &points, pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud)
 {
-    //#if (VERBOSE > 2)
-    //    auto start = std::chrono::high_resolution_clock::now();
-    //#endif
     int skipped = 0;
-    auto rs_vertex = points.get_vertices();
+    const rs2::vertex* rs_vertex = points.get_vertices();
+    size_t pt_count = points.size();
+    pcloud->reserve(pt_count);
 
     switch (this->getTaskId()) {
     case CameraType_t::CENTRAL: // no transformation
-        for (auto& pcl_point : pcloud->points)
+        for (size_t i=0; i<pt_count; i++)
         {
-            pcl_point.x = rs_vertex->x;
-            pcl_point.y = rs_vertex->y;
-            pcl_point.z = rs_vertex->z;
+            if ( !areSameF(rs_vertex->z, 0.0f) )
+            {
+                pcloud->push_back(pcl::PointXYZ(rs_vertex->x, rs_vertex->y, rs_vertex->z));
+            }
+            else skipped++;
             rs_vertex++;
         }
         break;
     case CameraType_t::FRONT:
-    {
-        //        1 0 0 0
-        //        0 0 0.0015708 -0.02
-        //        0 -0.0015708 0.999999 -0.01
-        float rad = static_cast<float>(degreesToRadians(ROT_RS1_TO_RS0_X_ANG));
-        rs2_extrinsics extrinsics_T_Rx;
-        extrinsics_T_Rx.rotation[0] = 1; extrinsics_T_Rx.rotation[3] = 0;             extrinsics_T_Rx.rotation[6] = 0;
-        extrinsics_T_Rx.rotation[1] = 0; extrinsics_T_Rx.rotation[4] = std::cos(rad); extrinsics_T_Rx.rotation[7] = -std::sin(rad);
-        extrinsics_T_Rx.rotation[2] = 0; extrinsics_T_Rx.rotation[5] = std::sin(rad); extrinsics_T_Rx.rotation[8] = std::cos(rad);
-        extrinsics_T_Rx.translation[0] = static_cast<float>(TRAN_RS1_TO_RS0_X_M);
-        extrinsics_T_Rx.translation[1] = static_cast<float>(TRAN_RS1_TO_RS0_Y_M);
-        extrinsics_T_Rx.translation[2] = static_cast<float>(TRAN_RS1_TO_RS0_Z_M);
-#if (VERBOSE > 3)
-        std::cerr << "Transformation matrix:" << std::endl
-                  << extrinsics_T_Rx.rotation[0] << " " << extrinsics_T_Rx.rotation[3] << " " << extrinsics_T_Rx.rotation[6] << " " << extrinsics_T_Rx.translation[0] << std::endl
-                  << extrinsics_T_Rx.rotation[1] << " " << extrinsics_T_Rx.rotation[1] << " " << extrinsics_T_Rx.rotation[7] << " " << extrinsics_T_Rx.translation[1] << std::endl
-                  << extrinsics_T_Rx.rotation[2] << " " << extrinsics_T_Rx.rotation[5] << " " << extrinsics_T_Rx.rotation[8] << " " << extrinsics_T_Rx.translation[2] << std::endl;
-#endif
-        for (auto& pcl_point : pcloud->points)
+        for (size_t i=0; i<pt_count; i++)
         {
-            if (areSameF(0.0f, rs_vertex->z))
+            if ( !areSameF(rs_vertex->z, 0.0f) )
             {
-                skipped++;
-                pcl_point.x = rs_vertex->x;
-                pcl_point.y = rs_vertex->y;
-                pcl_point.z = rs_vertex->z;
-                rs_vertex++;
-                continue;
+                float origin[3] { rs_vertex->x, rs_vertex->y, rs_vertex->z };
+                float target[3];
+                rs2_transform_point_to_point_custom(target, &m_extrinsics_front, origin);
+                pcloud->push_back(pcl::PointXYZ(target[0], target[1], target[2]));
             }
-            float origin[3] { rs_vertex->x, rs_vertex->y, rs_vertex->z };
-            float target[3];
-            rs2_transform_point_to_point_custom(target, &extrinsics_T_Rx, origin);
-            pcl_point.x = target[0];
-            pcl_point.y = target[1];
-            pcl_point.z = target[2];
+            else skipped++;
             rs_vertex++;
-#if (VERBOSE > 4)
-            std::cerr << "Point before: (" << origin[0] << "," << origin[1] << "," << origin[2] << ")\t" <<
-                         "Point after: (" << target[0] << "," << target[1] << "," << target[2] << ")" << std::endl;
-#endif
         }
         break;
-    }
     case CameraType_t::REAR:
-        // case TaskType_t::TID_P2C_R_2:
-    {
-        //        1 0 0 0
-        //        0 0 -0.0015708 0.02
-        //        0 0.0015708 0.999999 -0.01
-
-        //        1 0 0 0
-        //        0 0 -1 0.02
-        //        0 1 -4.37114e-08 -0.01
-        float rad = static_cast<float>(degreesToRadians(ROT_RS2_TO_RS0_X_ANG));
-        rs2_extrinsics extrinsics_T_Rx;
-        extrinsics_T_Rx.rotation[0] = 1; extrinsics_T_Rx.rotation[3] = 0;             extrinsics_T_Rx.rotation[6] = 0;
-        extrinsics_T_Rx.rotation[1] = 0; extrinsics_T_Rx.rotation[4] = std::cos(rad); extrinsics_T_Rx.rotation[7] = -std::sin(rad);
-        extrinsics_T_Rx.rotation[2] = 0; extrinsics_T_Rx.rotation[5] = std::sin(rad); extrinsics_T_Rx.rotation[8] = std::cos(rad);
-        extrinsics_T_Rx.translation[0] = static_cast<float>(TRAN_RS2_TO_RS0_X_M);
-        extrinsics_T_Rx.translation[1] = static_cast<float>(TRAN_RS2_TO_RS0_Y_M);
-        extrinsics_T_Rx.translation[2] = static_cast<float>(TRAN_RS2_TO_RS0_Z_M);
-#if (VERBOSE > 3)
-        std::cerr << "Transformation matrix:" << std::endl
-                  << extrinsics_T_Rx.rotation[0] << " " << extrinsics_T_Rx.rotation[3] << " " << extrinsics_T_Rx.rotation[6] << " " << extrinsics_T_Rx.translation[0] << std::endl
-                  << extrinsics_T_Rx.rotation[1] << " " << extrinsics_T_Rx.rotation[1] << " " << extrinsics_T_Rx.rotation[7] << " " << extrinsics_T_Rx.translation[1] << std::endl
-                  << extrinsics_T_Rx.rotation[2] << " " << extrinsics_T_Rx.rotation[5] << " " << extrinsics_T_Rx.rotation[8] << " " << extrinsics_T_Rx.translation[2] << std::endl;
-#endif
-        for (auto& pcl_point : pcloud->points)
+        for (size_t i=0; i<pt_count; i++)
         {
-            if (areSameF(0.0f, rs_vertex->z))
+            if ( !areSameF(rs_vertex->z, 0.0f) )
             {
-                skipped++;
-                pcl_point.x = rs_vertex->x;
-                pcl_point.y = rs_vertex->y;
-                pcl_point.z = rs_vertex->z;
-                rs_vertex++;
-                continue;
+                float origin[3] { rs_vertex->x, rs_vertex->y, rs_vertex->z };
+                float target[3];
+                rs2_transform_point_to_point_custom(target, &m_extrinsics_rear, origin);
+                pcloud->push_back(pcl::PointXYZ(target[0], target[1], target[2]));
             }
-            float origin[3] { rs_vertex->x, rs_vertex->y, rs_vertex->z };
-            float target[3];
-            rs2_transform_point_to_point_custom(target, &extrinsics_T_Rx, origin);
-            pcl_point.x = target[0];
-            pcl_point.y = target[1];
-            pcl_point.z = target[2];
+            else skipped++;
             rs_vertex++;
-#if (VERBOSE > 4)
-            std::cout << "Point before: (" << origin[0] << "," << origin[1] << "," << origin[2] << ")\t" <<
-                         "Point after: (" << target[0] << "," << target[1] << "," << target[2] << ")" << std::endl;
-            std::this_thread::sleep_for(std::chrono::nanoseconds(100));
-#endif
         }
         break;
     }
-    default:
-        std::cerr << "(Converter) Error: invalid device index" << std::endl;
-    }
-    //#if (VERBOSE > 2)
-    //    std::cout << "(Converter) Task (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") converted "
-    //              << pcloud->points.size() << " points to clouds, skipped " << skipped << ", took " << std::chrono::duration_cast
-    //                 <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
-    //#endif
 }
 
 FrameToPointsTask::FrameToPointsTask()
@@ -366,7 +349,7 @@ FrameToPointsTask::FrameToPointsTask()
 
 FrameToPointsTask::~FrameToPointsTask()
 {
-    // todo
+
 }
 
 void FrameToPointsTask::process()
@@ -374,19 +357,32 @@ void FrameToPointsTask::process()
     size_t i = 0;
     out.resize(in.size());
     rs2::pointcloud tmp_rs2_pc;
+#if (VERBOSE > 1)
+    auto start = std::chrono::high_resolution_clock::now();
+#endif
     while (in.size())
     {
-        rs2::frame tmp_frame = in.front();
+        rs2::frame tmp_frame_depth = in.front();
         in.pop_front();
-
+#if RS_COLOR_ENABLED
+        rs2::frame tmp_frame_color = in.front();
+        in.pop_front();
+#endif
         rs2_metadata_type sensor_ts = 0;
-        if (tmp_frame.supports_frame_metadata(RS2_FRAME_METADATA_SENSOR_TIMESTAMP))
-            sensor_ts = tmp_frame.get_frame_metadata(RS2_FRAME_METADATA_SENSOR_TIMESTAMP);
+        if (tmp_frame_depth.supports_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP))
+            sensor_ts = tmp_frame_depth.get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP);
         else std::cerr << "(FrameToPointsTask) Error retrieving frame timestamp" << std::endl;
-
-        tmp_rs2_pc.map_to(tmp_frame);
-        out.at(i++) = std::make_tuple(tmp_rs2_pc.calculate(tmp_frame), sensor_ts, tmp_frame.get_frame_number());
-        // out.at(i++) = tmp_rs2_pc.calculate(tmp_frame);
+#if RS_COLOR_ENABLED
+        tmp_rs2_pc.map_to(tmp_frame_color);
+        std::cout << "DEBUG F2P depth size:" << tmp_frame_depth.get_data_size() << " color size: " << tmp_frame_color.get_data_size() << std::endl;
+#else
+        tmp_rs2_pc.map_to(tmp_frame_depth);
+#endif
+        out.at(i++) = std::make_tuple(tmp_rs2_pc.calculate(tmp_frame_depth), sensor_ts, tmp_frame_depth.get_frame_number());
     }
+#if (VERBOSE > 1)
+    std::cout << "(Converter) FrameToPointsTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") took " << std::chrono::duration_cast
+                 <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
+#endif
     this->setTaskStatus(TASK_DONE);
 }

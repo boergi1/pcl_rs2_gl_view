@@ -68,19 +68,14 @@ typedef struct shared_references_s
 //    }
 //} rs2_references_t;
 
-
-
-
-
-
 // helper functions
 std::string rs2PositionToString(CameraType_t pos);
 
 int roundToInt(double val);
 
-bool areSameD(double a, double b);
+//bool areSameD(double a, double b);
 
-bool areSameF(float a, float b);
+//bool areSameF(float a, float b);
 
 
 

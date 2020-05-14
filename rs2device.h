@@ -14,9 +14,11 @@
 
 class FrameQueue
 {
+    std::string m_name;
 public:
-    FrameQueue(CameraType_t CameraType){
+    FrameQueue(CameraType_t CameraType, std::string name){
         m_camtype = CameraType;
+        m_name = name;
     }
     void addFrame(rs2::frame frame)
     {
@@ -25,7 +27,7 @@ public:
         m_fqueue.push_back(frame);
         if (m_fqueue.size() > QUE_SIZE_RS2FRAMES)
         {
-            std::cerr << "(FrameQueue) Too many frames in queue " << m_camtype << std::endl;
+            std::cerr << "(FrameQueue) Too many frames in queue " << m_camtype << " " << m_name << std::endl;
             m_fqueue.pop_front();
         }
         m_mtx.unlock();
@@ -90,9 +92,20 @@ private:
     bool m_recording = false;
 
     // filters
-    rs2::decimation_filter m_dec_filter = rs2::decimation_filter(2.0f);                 // Decimation - reduces depth frame density
-    rs2::threshold_filter m_thr_filter = rs2::threshold_filter(0.4f, 8.0f);             // Threshold  - removes values outside recommended range
-    rs2::spatial_filter m_spat_filter = rs2::spatial_filter(0.65f, 20.0f, 2.0f, 2.0f);  // Spatial    - edge-preserving spatial smoothing
+#if RS_FILTER_FRAMES_ENABLED
+#if RS_FILTER_DECIMATION_ENABLED
+    rs2::decimation_filter m_dec_filter = rs2::decimation_filter(RS_FILTER_DEC_MAG);
+#endif
+#if RS_FILTER_THRESHOLD_ENABLED
+    rs2::threshold_filter m_thr_filter = rs2::threshold_filter(RS_FILTER_THR_MIN, RS_FILTER_THR_MAX);
+#endif
+#if RS_FILTER_HOLEFILL_ENABLED
+    rs2::hole_filling_filter m_hole_filter = rs2::hole_filling_filter(RS_FILTER_HOLE_MODE);
+#endif
+#if RS_FILTER_SPATIAL_ENABLED
+    rs2::spatial_filter m_spat_filter = rs2::spatial_filter(RS_FILTER_SPA_ALPHA, RS_FILTER_SPA_DELTA, RS_FILTER_SPA_MAG, RS_FILTER_SPA_HOLE);
+#endif
+#endif
 
     std::string get_device_name(const rs2::device& dev);
 
@@ -129,6 +142,8 @@ public:
     }
 
     CameraType_t getPositionType() { return m_pos_id; }
+
+
 
 
     //    std::function<void (rs2::frame)> depth_callback = [&](const rs2::frame& frame)

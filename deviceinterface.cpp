@@ -47,8 +47,8 @@ std::vector<CameraType_t> DeviceInterface::connectRealSenseDevices()
         }
         
       //  m_depth_frame_queues.push_back(rs2::frame_queue(QUE_SIZE_RS2FRAMES, true));
-        m_depth_frame_queues.push_back(new FrameQueue(cam_id));
-        m_color_frame_queues.push_back(new FrameQueue(cam_id));
+        m_depth_frame_queues.push_back(new FrameQueue(cam_id, "depth"));
+        m_color_frame_queues.push_back(new FrameQueue(cam_id, "color"));
 
         m_rs2_devices.push_back(new Rs2Device( dev, device_id, cam_id, m_depth_frame_queues.back(), m_color_frame_queues.back()));
 

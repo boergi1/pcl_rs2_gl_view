@@ -273,7 +273,6 @@ void PointsToCloudTask::process()
         in.pop_front();
         rs2::points tmp_points = std::get<0>(tuple);
         pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>());
-        std::cout << "DEBUG " << tmp_points.size() << std::endl;
         points_to_pcl(tmp_points, tmp_pc);
         out.at(i++) = std::make_tuple(tmp_pc, std::get<1>(tuple), std::get<2>(tuple));
     }

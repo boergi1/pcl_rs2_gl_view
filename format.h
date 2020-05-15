@@ -30,7 +30,7 @@
 
 // Realsense frame filters
 #define RS_FILTER_FRAMES_ENABLED 1      // Toggle filters
-#define RS_FILTER_DECIMATION_ENABLED 1  // Decimation - reduces depth frame density
+#define RS_FILTER_DECIMATION_ENABLED 0  // Decimation - reduces depth frame density
 #define RS_FILTER_THRESHOLD_ENABLED 1   // Threshold - removes values outside recommended range
 #define RS_FILTER_SPATIAL_ENABLED 1     // Spatial - edge-preserving spatial smoothing
 #define RS_FILTER_HOLEFILL_ENABLED 0    // Hole filling - Rectify missing data
@@ -55,28 +55,34 @@
 #endif
 
 // Converter
-#define CONV_RS_ROTATION_AXIS "y"
+#define CONV_RS_ROTATION_AXIS "y" // todo: init t matrix in converter constructor
 #define TRAN_FRONT_TO_CENTRAL_X_M 0.0
 #define TRAN_FRONT_TO_CENTRAL_Y_M -0.020
 #define TRAN_FRONT_TO_CENTRAL_Z_M -0.010
-#define ROT_FRONT_TO_CENTRAL_ANG -60.0
+#define ROT_FRONT_TO_CENTRAL_ANG -90.0
 #define TRAN_REAR_TO_CENTRAL_X_M 0.0
 #define TRAN_REAR_TO_CENTRAL_Y_M 0.020
 #define TRAN_REAR_TO_CENTRAL_Z_M -0.010
-#define ROT_REAR_TO_CENTRAL_ANG 60.0
-
-
+#define ROT_REAR_TO_CENTRAL_ANG 90.0
 
 #define CONV_THREAD_POOL_SIZE 7
 #define CONV_SPLIT_DATA 0 // not yet implemented
 // PCL processing
-#define PCL_FILTER_REGION 0
-#if (PCL_FILTER_REGION > 0)
-#define PCL_FILTER_REGION_X_M 1 // +-
-#define PCL_FILTER_REGION_Y_M 5 // +-
-#define PCL_FILTER_REGION_Z_M 3
+#define PCL_FILTER_GLOBAL_REGION_ENABLED 1
+#if PCL_FILTER_GLOBAL_REGION_ENABLED
+#define PCL_GLOBAL_REGION_X_MIN_M -1.0 // +-
+#define PCL_GLOBAL_REGION_X_MAX_M 1.0 // +-
+#define PCL_GLOBAL_REGION_Y_MIN_M -2.0 // +-
+#define PCL_GLOBAL_REGION_Y_MAX_M 2.0 // +-
+#define PCL_GLOBAL_REGION_Z_MIN_M 0.0
+#define PCL_GLOBAL_REGION_Z_MAX_M 3.0
 #endif
 
+#define PCL_FILTER_PLANE_ENABLED 1
+#if PCL_FILTER_PLANE_ENABLED
+#define PCL_FILTER_PLANE_THRES 0.01
+#define PCL_FILTER_PLANE_TOL_ANGLE 10.0
+#endif
 
 // Buffer sizes
 #define QUE_SIZE_RS2FRAMES 100

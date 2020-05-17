@@ -46,8 +46,12 @@ public:
     FrameToPointsTask();
     virtual ~FrameToPointsTask() override;
 
-    std::deque<rs2::frame> in;
+    std::deque<rs2::frameset> in;
+#if RS_COLOR_ENABLED
+    std::vector<std::tuple <rs2::points, rs2::frame, long long, unsigned long long> > out;
+#else
     std::vector<std::tuple <rs2::points, long long, unsigned long long> > out;
+#endif
     // std::vector<rs2::points> out;
 
     void process() override;
@@ -58,21 +62,22 @@ class PointsToCloudTask : public BaseTask
 public:
     PointsToCloudTask();
     virtual ~PointsToCloudTask() override;
-
+#if RS_COLOR_ENABLED
+    std::deque<std::tuple <rs2::points, rs2::video_frame, long long, unsigned long long> > in;
+    std::vector< std::tuple <pcl::PointCloud<pcl::PointXYZRGB>::Ptr, double, unsigned long long> > out;
+#else
     std::deque< std::tuple <rs2::points, long long, unsigned long long> > in;
-    // std::deque< rs2::points > in;
-
     std::vector< std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, double, unsigned long long> > out;
-
+#endif
     void process() override;
 
 private:
     rs2_extrinsics m_extrinsics_front, m_extrinsics_rear;
 
+    void points_to_pcl(const rs2::points &points, pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud);
+    void points_to_pcl_rgb(const rs2::points &points, const rs2::video_frame& color, pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcloud);
     inline void rs2_transform_point_to_point_custom(float* to_point, const struct rs2_extrinsics* extrin, const float* from_point);
-
-    inline void points_to_pcl(const rs2::points &points, pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud);
-
+    inline void textureToColor(const rs2::video_frame* rgb_frame, const rs2::texture_coordinate* texture_uv, std::tuple<uint8_t, uint8_t, uint8_t>* output);
 };
 
 #define CONV_FRAMES_TO_POINTS_TASKS 3
@@ -82,13 +87,17 @@ class Rs2_PCL_Converter : ThreadController
 {
 private:
 
+    std::vector<FrameSetQueue*>* m_ref_to_framesets;
 
-    //    std::vector<rs2::frame_queue>* m_ref_to_rs2_queues;
-    std::vector<FrameQueue*>* m_ref_to_depth_queues;
+    //    std::vector<FrameQueue*>* m_ref_to_depth_queues;
+    //#if RS_COLOR_ENABLED
+    //    std::vector<FrameQueue*>* m_ref_to_color_queues;
+    //#endif
 #if RS_COLOR_ENABLED
-    std::vector<FrameQueue*>* m_ref_to_color_queues;
+    std::vector<CloudQueueRGB*>* m_ref_to_pcl_queues;
+#else
+        std::vector<CloudQueue*>* m_ref_to_pcl_queues;
 #endif
-    std::vector<CloudQueue*>* m_ref_to_pcl_queues;
     std::vector<CameraType_t> m_cam_positions;
 
     std::vector<FrameToPointsTask*> m_tasks_f2p;

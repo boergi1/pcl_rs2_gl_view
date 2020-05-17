@@ -157,16 +157,18 @@ void Rs2Device::rs2_capture_thread_func()
 
     while (m_active) {
         rs2::frameset frameset = rs2_pipe.wait_for_frames();
+        //  rs2::frameset fs = frame.as<rs2::frameset>()
+
 #if (VERBOSE > 0)
         auto cap_start = std::chrono::high_resolution_clock::now();
 #endif
-        rs2::depth_frame depth_frame = frameset.get_depth_frame();
-#if RS_COLOR_ENABLED
-        rs2::frame color_frame = frameset.get_color_frame();
-#endif
+//        rs2::depth_frame depth_frame = frameset.get_depth_frame();
+//#if RS_COLOR_ENABLED
+//        rs2::frame color_frame = frameset.get_color_frame();
+//#endif
         rs2_metadata_type frame_ts = 0;
-        if (depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP))
-            frame_ts = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP);
+        if (frameset.get_depth_frame().supports_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP))
+            frame_ts = frameset.get_depth_frame().get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP);
         /* RS2_FRAME_METADATA_FRAME_TIMESTAMP
          * RS2_FRAME_METADATA_SENSOR_TIMESTAMP
          * RS2_FRAME_METADATA_TIME_OF_ARRIVAL
@@ -177,51 +179,33 @@ void Rs2Device::rs2_capture_thread_func()
         {
 #if RS_FILTER_FRAMES_ENABLED
 #if RS_FILTER_DECIMATION_ENABLED
-            depth_frame = m_dec_filter.process(depth_frame);
+            frameset = m_dec_filter.process(frameset);
+            //            depth_frame = m_dec_filter.process(depth_frame);
 #endif
 #if RS_FILTER_THRESHOLD_ENABLED
-            depth_frame = m_thr_filter.process(depth_frame);
+            frameset = m_thr_filter.process(frameset);
+            //            depth_frame = m_thr_filter.process(depth_frame);
 #endif
 #if RS_FILTER_HOLEFILL_ENABLED
-            depth_frame = m_hole_filter.process(depth_frame);
+            frameset = m_hole_filter.process(frameset);
+            //             depth_frame = m_hole_filter.process(depth_frame);
 #endif
 #if RS_FILTER_SPATIAL_ENABLED
-            depth_frame = m_spat_filter.process(depth_frame);
+            frameset = m_spat_filter.process(frameset);
+            //            depth_frame = m_spat_filter.process(depth_frame);
 #endif
 #endif
-#if RS_DEPTH_ENABLED
-            m_depth_frame_queue->addFrame(depth_frame);
-#endif
-#if RS_COLOR_ENABLED
-            m_color_frame_queue->addFrame(color_frame);
-#endif
+//#if RS_DEPTH_ENABLED
+//            m_depth_frame_queue->addFrame(depth_frame);
+//#endif
+//#if RS_COLOR_ENABLED
+//            m_color_frame_queue->addFrame(color_frame);
+//#endif
+            m_frameset_queue->addFrame(frameset);
+
 #if (VERBOSE > 0)
             std::cout << "(Rs2Device) " << frameset.size() << " frame(s) from #" << serial << ": ";
-            std::cout.precision(std::numeric_limits<double>::max_digits10);
-            std::cout << "Drift: " << drift << ", ";
-            switch(depth_frame.get_frame_timestamp_domain()) {
-            case (RS2_TIMESTAMP_DOMAIN_HARDWARE_CLOCK):
-                // Frame timestamp was measured in relation to the camera clock
-                std::cout << "Hardware Clock";
-                break;
-            case (RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME):
-                // Frame timestamp was measured in relation to the OS system clock
-                std::cout << "System Time";
-                break;
-            case (RS2_TIMESTAMP_DOMAIN_GLOBAL_TIME):
-                // Frame timestamp was measured in relation to the camera clock and converted to OS system clock by constantly measure the difference
-                std::cout << "Global Time";
-                break;
-            case (RS2_TIMESTAMP_DOMAIN_COUNT):
-                // Number of enumeration values. Not a valid input: intended to be used in for-loops.
-                std::cout << "Domain Count";
-                break;
-            default:
-                std::cout << "Unknown";
-                break;
-            }
-            std::cout << " TS: " << depth_frame.get_timestamp() << " (" << depth_frame.get_frame_number() << "), size: "
-                      << depth_frame.get_data_size() << " bytes" << std::endl;
+            std::cout << "Drift: " << drift << ", TS: " << frame_ts << " (" << frameset.get_depth_frame().get_frame_number() << ")";
 #endif
 #if (VERBOSE > 0)
             auto cap_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-cap_start).count();
@@ -256,13 +240,22 @@ void Rs2Device::setCaptureEnabled(bool running)
 
 bool Rs2Device::isActive() { return m_active; }
 
-Rs2Device::Rs2Device(rs2::device &dev, size_t dev_id, CameraType_t pos_id, FrameQueue *depth_frames, FrameQueue *color_frames)
+Rs2Device::Rs2Device(rs2::device &dev, size_t dev_id, CameraType_t pos_id, FrameQueue* depth_frames, FrameQueue* color_frames)
 {
     m_rs2_dev = dev;
     m_rs2_dev_id = dev_id;
     m_pos_id = pos_id;
     m_depth_frame_queue = depth_frames;
     m_color_frame_queue = color_frames;
+    std::cout << "New Realsense device, type: "<< getPositionTypeStr() << " #" << m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
+}
+
+Rs2Device::Rs2Device(rs2::device &dev, size_t dev_id, CameraType_t pos_id, FrameSetQueue* frames)
+{
+    m_rs2_dev = dev;
+    m_rs2_dev_id = dev_id;
+    m_pos_id = pos_id;
+    m_frameset_queue = frames;
     std::cout << "New Realsense device, type: "<< getPositionTypeStr() << " #" << m_rs2_dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
 }
 

@@ -8,24 +8,27 @@ void Rs2_PCL_Converter::converter_thread_func()
     while (m_active) {
         bool idle = true;
         // Read from RealSense2 Devices and generate tasks
-        for (size_t i = 0; i < m_ref_to_depth_queues->size(); i++)
+        //        for (size_t i = 0; i < m_ref_to_depth_queues->size(); i++)
+        for (size_t i = 0; i < m_ref_to_framesets->size(); i++)
         {
-            //            auto &queue = m_ref_to_rs2_queues->at(i);
-            auto queue_depth = m_ref_to_depth_queues->at(i);
-#if RS_COLOR_ENABLED
-            auto queue_color = m_ref_to_color_queues->at(i);
-#endif
-            while ( !queue_depth->isEmpty() )
+            //            auto queue_depth = m_ref_to_depth_queues->at(i);
+            //#if RS_COLOR_ENABLED
+            //            auto queue_color = m_ref_to_color_queues->at(i);
+            //#endif
+            auto fs_deque = m_ref_to_framesets->at(i);
+            //            while ( !queue_depth->isEmpty() )
+            while ( !fs_deque->isEmpty() )
             {
                 idle = false;
                 FrameToPointsTask* task_f2p = new FrameToPointsTask();
                 task_f2p->setTaskType(TaskType_t::TSKTYPE_F2P);
                 task_f2p->setTaskId(m_cam_positions.at(i));
                 task_f2p->setTaskStatus(BaseTask::WORK_TO_DO);
-                task_f2p->in.push_back(queue_depth->getFrame());
-#if RS_COLOR_ENABLED
-                task_f2p->in.push_back(queue_color->getFrame());
-#endif
+                //                task_f2p->in.push_back(queue_depth->getFrame());
+                //#if RS_COLOR_ENABLED
+                //                task_f2p->in.push_back(queue_color->getFrame());
+                //#endif
+                task_f2p->in.push_back(fs_deque->getFrame());
                 this->addTask(task_f2p);
 #if (VERBOSE > 1)
                 std::cout << "(Converter) Added TASK \"F2P\" (" << tmp_rs2_frame.get_frame_number() << ") size in: "
@@ -128,7 +131,12 @@ void Rs2_PCL_Converter::converter_thread_func()
                             {
                                 if ( taskid == cloudqueue->getCameraType())
                                 {
+                                    auto pc = std::get<0>(cloudtuple);
+#if RS_COLOR_ENABLED
+                                    //  cloudqueue->addCloudT(cloudtuple);
+#else
                                     cloudqueue->addCloudT(cloudtuple);
+#endif
 #if (VERBOSE > 1)
                                     std::cout << "(Converter) Added Cloud to queue " << taskid << " (" << std::get<2>(cloudtuple) << ") size: " << std::get<0>(cloudtuple)->size() << std::endl;
 #endif
@@ -157,18 +165,15 @@ void Rs2_PCL_Converter::converter_thread_func()
 
 Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, PclInterface *out_interface_ref, std::vector<CameraType_t> camera_types)
 {
-    m_ref_to_depth_queues = in_interface_ref->getDepthFrameData();
-#if RS_COLOR_ENABLED
-    m_ref_to_color_queues = in_interface_ref->getColorFrameData();
-#endif
+    //    m_ref_to_depth_queues = in_interface_ref->getDepthFrameData();
+    //#if RS_COLOR_ENABLED
+    //    m_ref_to_color_queues = in_interface_ref->getColorFrameData();
+    //#endif
+    m_ref_to_framesets = in_interface_ref->getFrameSetData();
 
     m_cam_positions = camera_types;
 
-    //    for (auto device : *in_interface_ref->getRs2Devices())
-    //        m_cam_positions.push_back(device->getPositionType());
-
     m_ref_to_pcl_queues = out_interface_ref->getInputCloudsRef();
-
 }
 
 Rs2_PCL_Converter::~Rs2_PCL_Converter()
@@ -254,6 +259,51 @@ PointsToCloudTask::PointsToCloudTask()
 #endif
 }
 
+FrameToPointsTask::FrameToPointsTask()
+{
+
+}
+
+FrameToPointsTask::~FrameToPointsTask()
+{
+
+}
+
+void FrameToPointsTask::process()
+{
+    size_t i = 0;
+    out.resize(in.size());
+    rs2::pointcloud tmp_rs2_pc;
+#if (VERBOSE > 1)
+    auto start = std::chrono::high_resolution_clock::now();
+#endif
+    while (in.size())
+    {
+        rs2::depth_frame tmp_frame_depth = in.front().get_depth_frame();
+#if RS_COLOR_ENABLED
+        rs2::video_frame tmp_frame_color = in.front().get_color_frame();
+#endif
+        in.pop_front();
+        rs2_metadata_type sensor_ts = 0;
+        if (tmp_frame_depth.supports_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP))
+            sensor_ts = tmp_frame_depth.get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP);
+        else std::cerr << "(FrameToPointsTask) Error retrieving frame timestamp" << std::endl;
+#if RS_COLOR_ENABLED
+        tmp_rs2_pc.map_to(tmp_frame_color);
+        out.at(i++) = std::make_tuple(tmp_rs2_pc.calculate(tmp_frame_depth), tmp_frame_color, sensor_ts, tmp_frame_depth.get_frame_number());
+#else
+        tmp_rs2_pc.map_to(tmp_frame_depth);
+        out.at(i++) = std::make_tuple(tmp_rs2_pc.calculate(tmp_frame_depth), sensor_ts, tmp_frame_depth.get_frame_number());
+#endif
+    }
+#if (VERBOSE > 1)
+    std::cout << "(Converter) FrameToPointsTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") took " << std::chrono::duration_cast
+                 <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
+#endif
+    this->setTaskStatus(TASK_DONE);
+}
+
+
 PointsToCloudTask::~PointsToCloudTask()
 {
 }
@@ -261,7 +311,13 @@ PointsToCloudTask::~PointsToCloudTask()
 void PointsToCloudTask::process()
 {
     // pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_POINTS_COUNT,1));
-    //    pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_WIDTH_DEPTH, RS_FRAME_HEIGHT_DEPTH));
+#if PCL_CLOUD_ORGANIZED
+#if RS_COLOR_ENABLED
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZRGB>(RS_FRAME_WIDTH_DEPTH/RS_FILTER_DEC_MAG, RS_FRAME_HEIGHT_DEPTH/RS_FILTER_DEC_MAG));
+#else
+    pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_WIDTH_DEPTH/RS_FILTER_DEC_MAG, RS_FRAME_HEIGHT_DEPTH/RS_FILTER_DEC_MAG));
+#endif
+#endif
     size_t i = 0;
     out.resize(in.size());
 #if (VERBOSE > 1)
@@ -271,9 +327,26 @@ void PointsToCloudTask::process()
     {
         auto tuple = in.front();
         in.pop_front();
-        rs2::points tmp_points = std::get<0>(tuple);
+#if !PCL_CLOUD_ORGANIZED
+#if RS_COLOR_ENABLED
+        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZRGB>());
+#else
         pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>());
+#endif
+#endif
+        rs2::points tmp_points = std::get<0>(tuple);
+#if RS_COLOR_ENABLED
+        rs2::frame color = std::get<1>(tuple);
+        auto ts =  std::get<2>(tuple);
+        auto ctr =  std::get<3>(tuple);
+        points_to_pcl_rgb(tmp_points, color, tmp_pc);
+#else
+        auto ts =  std::get<1>(tuple);
+        auto ctr =  std::get<2>(tuple);
         points_to_pcl(tmp_points, tmp_pc);
+#endif
+
+
         out.at(i++) = std::make_tuple(tmp_pc, std::get<1>(tuple), std::get<2>(tuple));
     }
 #if (VERBOSE > 1)
@@ -296,7 +369,9 @@ void PointsToCloudTask::points_to_pcl(const rs2::points &points, pcl::PointCloud
     int skipped = 0;
     const rs2::vertex* rs_vertex = points.get_vertices();
     size_t pt_count = points.size();
+#if !PCL_CLOUD_ORGANIZED
     pcloud->reserve(pt_count);
+#endif
 
     switch (this->getTaskId()) {
     case CameraType_t::CENTRAL: // no transformation
@@ -304,7 +379,13 @@ void PointsToCloudTask::points_to_pcl(const rs2::points &points, pcl::PointCloud
         {
             if ( !areSameF(rs_vertex->z, 0.0f) )
             {
+#if PCL_CLOUD_ORGANIZED
+                pcloud->points.at(i).x = rs_vertex->x;
+                pcloud->points.at(i).y = rs_vertex->y;
+                pcloud->points.at(i).z = rs_vertex->z;
+#else
                 pcloud->push_back(pcl::PointXYZ(rs_vertex->x, rs_vertex->y, rs_vertex->z));
+#endif
             }
             else skipped++;
             rs_vertex++;
@@ -318,7 +399,13 @@ void PointsToCloudTask::points_to_pcl(const rs2::points &points, pcl::PointCloud
                 float origin[3] { rs_vertex->x, rs_vertex->y, rs_vertex->z };
                 float target[3];
                 rs2_transform_point_to_point_custom(target, &m_extrinsics_front, origin);
+#if PCL_CLOUD_ORGANIZED
+                pcloud->points.at(i).x = target[0];
+                pcloud->points.at(i).y = target[1];
+                pcloud->points.at(i).z = target[2];
+#else
                 pcloud->push_back(pcl::PointXYZ(target[0], target[1], target[2]));
+#endif
             }
             else skipped++;
             rs_vertex++;
@@ -332,7 +419,13 @@ void PointsToCloudTask::points_to_pcl(const rs2::points &points, pcl::PointCloud
                 float origin[3] { rs_vertex->x, rs_vertex->y, rs_vertex->z };
                 float target[3];
                 rs2_transform_point_to_point_custom(target, &m_extrinsics_rear, origin);
+#if PCL_CLOUD_ORGANIZED
+                pcloud->points.at(i).x = target[0];
+                pcloud->points.at(i).y = target[1];
+                pcloud->points.at(i).z = target[2];
+#else
                 pcloud->push_back(pcl::PointXYZ(target[0], target[1], target[2]));
+#endif
             }
             else skipped++;
             rs_vertex++;
@@ -341,47 +434,119 @@ void PointsToCloudTask::points_to_pcl(const rs2::points &points, pcl::PointCloud
     }
 }
 
-FrameToPointsTask::FrameToPointsTask()
+inline void PointsToCloudTask::textureToColor(const rs2::video_frame* rgb_frame, const rs2::texture_coordinate* texture_uv, std::tuple<uint8_t, uint8_t, uint8_t>* output)
 {
-
+    // Get Width and Height coordinates of texture
+    int width  = rgb_frame->get_width();  // Frame width in pixels
+    int height = rgb_frame->get_height(); // Frame height in pixels
+    // Normals to Texture Coordinates conversion
+    int x_value = std::min(std::max(int(texture_uv->u * width  + .5f), 0), width - 1);
+    int y_value = std::min(std::max(int(texture_uv->v * height + .5f), 0), height - 1);
+    int bytes = x_value * rgb_frame->get_bytes_per_pixel();   // Get # of bytes per pixel
+    int strides = y_value * rgb_frame->get_stride_in_bytes(); // Get line width in bytes
+    int Text_Index =  (bytes + strides);
+    const auto New_Texture = reinterpret_cast<const uint8_t*>(rgb_frame->get_data());
+    // RGB components to save in tuple
+    *output = std::make_tuple<int, int, int>(New_Texture[Text_Index], New_Texture[Text_Index+1], New_Texture[Text_Index+2]);
 }
 
-FrameToPointsTask::~FrameToPointsTask()
+
+void PointsToCloudTask::points_to_pcl_rgb(const rs2::points &points, const rs2::video_frame& color, pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcloud)
 {
 
-}
+    int skipped = 0;
+    const rs2::vertex* rs_vertex = points.get_vertices();
+    size_t pt_count = points.size();
+#if !PCL_CLOUD_ORGANIZED
+    pcloud->reserve(pt_count);
+#endif
 
-void FrameToPointsTask::process()
-{
-    size_t i = 0;
-    out.resize(in.size());
-    rs2::pointcloud tmp_rs2_pc;
-#if (VERBOSE > 1)
-    auto start = std::chrono::high_resolution_clock::now();
-#endif
-    while (in.size())
-    {
-        rs2::frame tmp_frame_depth = in.front();
-        in.pop_front();
-#if RS_COLOR_ENABLED
-        rs2::frame tmp_frame_color = in.front();
-        in.pop_front();
-#endif
-        rs2_metadata_type sensor_ts = 0;
-        if (tmp_frame_depth.supports_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP))
-            sensor_ts = tmp_frame_depth.get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP);
-        else std::cerr << "(FrameToPointsTask) Error retrieving frame timestamp" << std::endl;
-#if RS_COLOR_ENABLED
-        tmp_rs2_pc.map_to(tmp_frame_color);
-        std::cout << "DEBUG F2P depth size:" << tmp_frame_depth.get_data_size() << " color size: " << tmp_frame_color.get_data_size() << std::endl;
+    std::tuple<uint8_t, uint8_t, uint8_t> rgb;
+    auto Texture_Coord = points.get_texture_coordinates();
+
+
+    switch (this->getTaskId()) {
+    case CameraType_t::CENTRAL: // no transformation
+        for (size_t i=0; i<pt_count; i++)
+        {
+            if ( !areSameF(rs_vertex->z, 0.0f) )
+            {
+                textureToColor(&color, &Texture_Coord[i], &rgb);
+#if PCL_CLOUD_ORGANIZED
+                pcloud->points.at(i).x = rs_vertex->x;
+                pcloud->points.at(i).y = rs_vertex->y;
+                pcloud->points.at(i).z = rs_vertex->z;
+                pcloud->points.at(i).r = std::get<0>(rgb);
+                pcloud->points.at(i).g = std::get<1>(rgb);
+                pcloud->points.at(i).b = std::get<2>(rgb);
 #else
-        tmp_rs2_pc.map_to(tmp_frame_depth);
+                pcl::PointXYZRGB pt = pcl::PointXYZRGB(std::get<0>(rgb), std::get<1>(rgb), std::get<2>(rgb));
+                pt.x = rs_vertex->x;
+                pt.y = rs_vertex->y;
+                pt.z = rs_vertex->z;
+                pcloud->push_back(pt);
 #endif
-        out.at(i++) = std::make_tuple(tmp_rs2_pc.calculate(tmp_frame_depth), sensor_ts, tmp_frame_depth.get_frame_number());
+            }
+            else skipped++;
+            rs_vertex++;
+        }
+        break;
+    case CameraType_t::FRONT:
+        for (size_t i=0; i<pt_count; i++)
+        {
+            if ( !areSameF(rs_vertex->z, 0.0f) )
+            {
+                float origin[3] { rs_vertex->x, rs_vertex->y, rs_vertex->z };
+                float target[3];
+                rs2_transform_point_to_point_custom(target, &m_extrinsics_front, origin);
+                textureToColor(&color, &Texture_Coord[i], &rgb);
+#if PCL_CLOUD_ORGANIZED
+                pcloud->points.at(i).x = target[0];
+                pcloud->points.at(i).y = target[1];
+                pcloud->points.at(i).z = target[2];
+                pcloud->points.at(i).r = std::get<0>(rgb);
+                pcloud->points.at(i).g = std::get<1>(rgb);
+                pcloud->points.at(i).b = std::get<2>(rgb);
+#else
+                pcl::PointXYZRGB pt = pcl::PointXYZRGB(std::get<0>(rgb), std::get<1>(rgb), std::get<2>(rgb));
+                pt.x = target[0];
+                pt.y = target[1];
+                pt.z = target[2];
+                pcloud->push_back(pt);
+#endif
+            }
+            else skipped++;
+            rs_vertex++;
+        }
+        break;
+    case CameraType_t::REAR:
+        for (size_t i=0; i<pt_count; i++)
+        {
+            if ( !areSameF(rs_vertex->z, 0.0f) )
+            {
+                float origin[3] { rs_vertex->x, rs_vertex->y, rs_vertex->z };
+                float target[3];
+                rs2_transform_point_to_point_custom(target, &m_extrinsics_rear, origin);
+                textureToColor(&color, &Texture_Coord[i], &rgb);
+#if PCL_CLOUD_ORGANIZED
+                pcloud->points.at(i).x = target[0];
+                pcloud->points.at(i).y = target[1];
+                pcloud->points.at(i).z = target[2];
+                pcloud->points.at(i).r = std::get<0>(rgb);
+                pcloud->points.at(i).g = std::get<1>(rgb);
+                pcloud->points.at(i).b = std::get<2>(rgb);
+#else
+                pcl::PointXYZRGB pt = pcl::PointXYZRGB(std::get<0>(rgb), std::get<1>(rgb), std::get<2>(rgb));
+                pt.x = target[0];
+                pt.y = target[1];
+                pt.z = target[2];
+                pcloud->push_back(pt);
+#endif
+            }
+            else skipped++;
+            rs_vertex++;
+        }
+        break;
     }
-#if (VERBOSE > 1)
-    std::cout << "(Converter) FrameToPointsTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") took " << std::chrono::duration_cast
-                 <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
-#endif
-    this->setTaskStatus(TASK_DONE);
+
 }

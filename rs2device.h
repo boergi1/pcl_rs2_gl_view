@@ -2,15 +2,25 @@
 #define RS2DEVICE_H
 
 #include <iostream>
+#include <thread>
+#include <mutex>
+
 #include <librealsense2/rs.hpp>
 #include <librealsense2/rsutil.h>
 #include <librealsense2/rs_advanced_mode.hpp>
 #include <librealsense2/hpp/rs_frame.hpp>
-#include <thread>
-#include <mutex>
+
+#include <opencv2/core/core.hpp>
 
 #include "format.h"
 #include "customtypes.h"
+
+typedef enum
+{
+    DEFAULT = 0,
+    MASTER,
+    SLAVE
+} SyncType_t;
 
 class FrameQueue
 {
@@ -44,7 +54,7 @@ public:
         }
         else
         {
-            std::cerr << "(FrameQueue) is empty" << std::endl;
+            std::cerr << "(FrameQueue) is empty " << m_camtype << " " << m_name << std::endl;
             return *m_fqueue.end();
         }
     }
@@ -62,67 +72,10 @@ public:
         }
     }
     bool isEmpty() { return m_fqueue.size() == 0; }
+    bool size() { return m_fqueue.size(); }
     CameraType_t getCameraType() { return m_camtype; }
 private:
     std::deque<rs2::frame> m_fqueue;
-    std::mutex m_mtx;
-    CameraType_t m_camtype;
-};
-
-class FrameSetQueue
-{
-    std::string m_name;
-public:
-    FrameSetQueue(CameraType_t CameraType, std::string name){
-        m_camtype = CameraType;
-        m_name = name;
-    }
-    void addFrame(rs2::frameset frame)
-    {
-        frame.keep();
-        m_mtx.lock();
-        m_fqueue.push_back(frame);
-        if (m_fqueue.size() > QUE_SIZE_RS2FRAMES)
-        {
-            std::cerr << "(FrameQueue) Too many frames in queue " << m_camtype << " " << m_name << std::endl;
-            m_fqueue.pop_front();
-        }
-        m_mtx.unlock();
-    }
-    rs2::frameset getFrame()
-    {
-        if (m_fqueue.size())
-        {
-            m_mtx.lock();
-            auto frame = m_fqueue.front();
-            m_fqueue.pop_front();
-            m_mtx.unlock();
-            return frame;
-        }
-        else
-        {
-            std::cerr << "(FrameQueue) is empty" << std::endl;
-            return *m_fqueue.end();
-        }
-    }
-    const rs2::frameset& readFrame()
-    {
-        if (m_fqueue.size())
-        {
-            //  const rs2::frameset& frame = m_fqueue.front();
-            //  return frame;
-            return m_fqueue.front();
-        }
-        else
-        {
-            std::cerr << "(FrameQueue) is empty" << std::endl;
-            return *m_fqueue.end();
-        }
-    }
-    bool isEmpty() { return m_fqueue.size() == 0; }
-    CameraType_t getCameraType() { return m_camtype; }
-private:
-    std::deque<rs2::frameset> m_fqueue;
     std::mutex m_mtx;
     CameraType_t m_camtype;
 };
@@ -132,14 +85,14 @@ class Rs2Device
 private:
     double m_last_frame_time = 0;
 
-    //    rs2::frame_queue m_frame_queue;
     FrameQueue* m_depth_frame_queue;
     FrameQueue* m_color_frame_queue;
-    FrameSetQueue* m_frameset_queue;
+
 
     rs2::device m_rs2_dev;
     size_t m_rs2_dev_id;
     CameraType_t m_pos_id;
+    SyncType_t m_sync_type;
 
     std::thread m_capture_thread;
 
@@ -151,7 +104,7 @@ private:
     bool m_recording = false;
 
     // filters
-#if RS_FILTER_FRAMES_ENABLED
+#if FILTER_DEPTH_RS_ENABLED
 #if RS_FILTER_DECIMATION_ENABLED
     rs2::decimation_filter m_dec_filter = rs2::decimation_filter(RS_FILTER_DEC_MAG);
 #endif
@@ -180,8 +133,7 @@ private:
 
 public:
     //     Rs2Device(rs2::device &dev, size_t dev_id, CameraType_t pos_id, rs2::frame_queue &framebuf);
-    Rs2Device(rs2::device &dev, size_t dev_id, CameraType_t pos_id, FrameQueue* depth_frames, FrameQueue *color_frames);
-    Rs2Device(rs2::device &dev, size_t dev_id, CameraType_t pos_id, FrameSetQueue* frames);
+    Rs2Device(rs2::device &dev, size_t dev_id, CameraType_t pos_id, FrameQueue *depth_frames, FrameQueue *color_frames);
 
     ~Rs2Device();
 
@@ -202,6 +154,8 @@ public:
     }
 
     CameraType_t getPositionType() { return m_pos_id; }
+
+    SyncType_t getSyncType() { return m_sync_type; }
 
 
 

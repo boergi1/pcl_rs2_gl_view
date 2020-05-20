@@ -1,8 +1,13 @@
 #ifndef FORMAT_H
 #define FORMAT_H
 
+#include <iomanip>
+
+// Global settings
+#define PROC_PIPE_PC_ENABLED 0
+#define PROC_PIPE_MAT_ENABLED 1
 // Verbosity level
-#define VERBOSE 1
+#define VERBOSE 2
 // Makros
 #define degreesToRadians(angleDegrees) ((angleDegrees) * M_PI / 180.0)
 #define radiansToDegrees(angleRadians) ((angleRadians) * 180.0 / M_PI)
@@ -16,7 +21,7 @@
 
 #define RS_MASTER_SLAVE_CONF_ENABLED 1
 #define RS_DEPTH_ENABLED 1
-#define RS_COLOR_ENABLED 0
+#define RS_COLOR_ENABLED 1
 #define RS_EMITTER_ENABLED 1.f
 #define RS_EMITTER_POWER 1.f
 
@@ -25,17 +30,18 @@
 #define RS_FRAME_RATE_DEPTH 30 //15 //30
 
 #define RS_FRAME_PERIOD_MS 1000/RS_FRAME_RATE_DEPTH
-#define RS_FRAME_PERIOD_NS 1000000/RS_FRAME_RATE_DEPTH
+#define RS_FRAME_PERIOD_NS 1000000000/RS_FRAME_RATE_DEPTH
 #define RS_FRAME_POINTS_COUNT RS_FRAME_WIDTH_DEPTH*RS_FRAME_HEIGHT_DEPTH
 
 // Realsense frame filters
-#define RS_FILTER_FRAMES_ENABLED 0      // Toggle filters
+#define FILTER_DEPTH_RS_ENABLED 1      // Toggle filters
+
 #define RS_FILTER_DECIMATION_ENABLED 0  // Decimation - reduces depth frame density
 #define RS_FILTER_THRESHOLD_ENABLED 1   // Threshold - removes values outside recommended range
-#define RS_FILTER_SPATIAL_ENABLED 1     // Spatial - edge-preserving spatial smoothing
+#define RS_FILTER_SPATIAL_ENABLED 0     // Spatial - edge-preserving spatial smoothing
 #define RS_FILTER_HOLEFILL_ENABLED 0    // Hole filling - Rectify missing data
 
-#if RS_FILTER_FRAMES_ENABLED
+#if FILTER_DEPTH_RS_ENABLED
 #define RS_FILTER_DEC_MAG 2.0f // (min: 1, max: 8, step: 1)
 #define RS_FILTER_THR_MIN 0.4f // (min: 0, max: 16, step: 0.1)
 #define RS_FILTER_THR_MAX 8.0f // (min: 0, max: 16, step: 0.1)
@@ -60,7 +66,7 @@
 #define CONV_THREAD_POOL_SIZE 7
 #define CONV_SPLIT_DATA 0 // not yet implemented
 // PCL processing
-#define PCL_CLOUD_ORGANIZED 0
+#define PCL_CLOUD_ORGANIZED 1
 // PCL filters
 #define PCL_FILTER_GLOBAL_REGION_ENABLED 1
 #if PCL_FILTER_GLOBAL_REGION_ENABLED
@@ -87,8 +93,8 @@
 #define BUF_SIZE_TOBJ 100
 #define BUF_SIZE_VEL CV_FRAME_RATE*2 // x, y pairs
 // Thread poll delays
-#define DELAY_CONV_POLL_NS 10
-#define DELAY_PCL_POLL_NS 100
+#define DELAY_CONV_POLL_NS RS_FRAME_PERIOD_NS/2/3
+#define DELAY_PCL_POLL_NS RS_FRAME_PERIOD_NS/2
 #define DELAY_PCL_VIEW_NS RS_FRAME_PERIOD_NS/2
 // Thread idle delays
 #define DELAY_SEGM CV_FRAME_PERIOD_MS/2

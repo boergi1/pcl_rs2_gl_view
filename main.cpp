@@ -31,7 +31,9 @@ int main() try
 #endif
         device_interface->startRecordingRs2Devices();
 #if (RS_DEPTH_ENABLED > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(RS_FRAME_PERIOD_MS*2));
         rs2_pcl_conv->setActive(true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(RS_FRAME_PERIOD_MS));
         pcl_interface->setActive(true);
 #endif
     }

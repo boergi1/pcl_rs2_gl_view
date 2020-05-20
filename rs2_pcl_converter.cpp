@@ -2,117 +2,109 @@
 
 void Rs2_PCL_Converter::converter_thread_func()
 {
+    // rs2::frame in first task to cv::mat and rs2::points
     std::cout << "(Converter) Thread started, id: " << std::this_thread::get_id() << std::endl;
 
     //    m_active = true;
     while (m_active) {
         bool idle = true;
         // Read from RealSense2 Devices and generate tasks
-        //        for (size_t i = 0; i < m_ref_to_depth_queues->size(); i++)
-        for (size_t i = 0; i < m_ref_to_framesets->size(); i++)
+        for (size_t i = 0; i < m_ref_to_depth_queues->size(); i++)
         {
-            //            auto queue_depth = m_ref_to_depth_queues->at(i);
-            //#if RS_COLOR_ENABLED
-            //            auto queue_color = m_ref_to_color_queues->at(i);
-            //#endif
-            auto fs_deque = m_ref_to_framesets->at(i);
-            //            while ( !queue_depth->isEmpty() )
-            while ( !fs_deque->isEmpty() )
+            auto queue_depth = m_ref_to_depth_queues->at(i);
+
+            if (queue_depth->size())
             {
                 idle = false;
+#if RS_COLOR_ENABLED
+                auto queue_color = m_ref_to_color_queues->at(i);
+#endif
+
+#if PROC_PIPE_MAT_ENABLED
+                //                while ( !queue_depth->isEmpty() )
+                //                {
+                FrameToDepthTask* depth_task = new FrameToDepthTask();
+                depth_task->setTaskType(TaskType_t::TSKTYPE_Frame2Depth);
+                depth_task->setTaskId(m_cam_positions.at(i));
+                depth_task->setTaskStatus(BaseTask::WORK_TO_DO);
+                rs2::frame depth_frame = queue_depth->getFrame();
+                depth_task->in.push_back(std::make_pair(depth_frame.get_frame_number(), depth_frame));
+                this->addTask(depth_task);
+#if RS_COLOR_ENABLED
+                FrameToColorTask* color_task = new FrameToColorTask();
+                color_task->setTaskType(TaskType_t::TSKTYPE_Frame2Color);
+                color_task->setTaskId(m_cam_positions.at(i));
+                color_task->setTaskStatus(BaseTask::WORK_TO_DO);
+                rs2::frame color_frame = queue_color->getFrame();
+                if (color_frame)
+                {
+                    color_task->in.push_back(std::make_pair(depth_frame.get_frame_number(), color_frame));
+                    this->addTask(color_task);
+                }
+
+#endif
+
+                //                }
+#endif
+
+#if PROC_PIPE_PC_ENABLED
                 FrameToPointsTask* task_f2p = new FrameToPointsTask();
-                task_f2p->setTaskType(TaskType_t::TSKTYPE_F2P);
+                task_f2p->setTaskType(TaskType_t::TSKTYPE_Frame2Pts);
                 task_f2p->setTaskId(m_cam_positions.at(i));
                 task_f2p->setTaskStatus(BaseTask::WORK_TO_DO);
-                //                task_f2p->in.push_back(queue_depth->getFrame());
-                //#if RS_COLOR_ENABLED
-                //                task_f2p->in.push_back(queue_color->getFrame());
-                //#endif
-                task_f2p->in.push_back(fs_deque->getFrame());
-                this->addTask(task_f2p);
+                while ( !queue_depth->isEmpty() )
+                {
+                    idle = false;
+                    task_f2p->in.push_back(queue_depth->getFrame());
+                }
 #if (VERBOSE > 1)
-                std::cout << "(Converter) Added TASK \"F2P\" (" << tmp_rs2_frame.get_frame_number() << ") size in: "
-                          << task_f2p->in.size() << "x" << tmp_rs2_frame.get_data_size() << " addr: " << &task_f2p << std::endl;
+                std::cout << "(Converter) Added TASK \"Depth2Points\"; input: " << task_f2p->in.size() << std::endl;
+#endif
+                this->addTask(task_f2p);
 #endif
             }
         }
 
         // Read tasks from output
-        // std::cout << "(Converter) Handle " << this->OutputQueue.size() << " finished tasks" << std::endl;
         while(this->OutputQueue.size())
         {
+            //            typedef enum
+            //            {
+            //                TSKTYPE_Frame2Pts = 0,
+            //                TSKTYPE_Pts2Cld,
+            //                TSKTYPE_Frame2Depth,
+            //                TSKTYPE_Frame2Color
+            //            } TaskType_t;
             idle = false;
             BaseTask* tmp_task = getTask();
             auto taskid = tmp_task->getTaskId();
             if (tmp_task->getTaskStatus() == BaseTask::TaskStatus_t::TASK_DONE)
             {
-                switch (tmp_task->getTaskType()) {
-                // Read converted points and create new tasks
-                case TaskType_t::TSKTYPE_F2P:
+                switch (tmp_task->getTaskType())
                 {
-                    switch (taskid) {
-                    case CameraType_t::CENTRAL:
+                // Read converted points and create new tasks
+                case TaskType_t::TSKTYPE_Frame2Pts:
+                {
+#if PROC_PIPE_PC_ENABLED
+                    PointsToCloudTask* task_p2c = new PointsToCloudTask();
+                    task_p2c->setTaskType(TaskType_t::TSKTYPE_Pts2Cld);
+                    task_p2c->setTaskId(taskid);
+                    task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
+                    for (auto tuple : static_cast<FrameToPointsTask*>(tmp_task)->out)
                     {
-                        for (auto tuple : static_cast<FrameToPointsTask*>(tmp_task)->out)
-                        {
-                            PointsToCloudTask* task_p2c = new PointsToCloudTask();
-                            task_p2c->setTaskType(TaskType_t::TSKTYPE_P2C);
-                            task_p2c->setTaskId(taskid);
-                            task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
-                            task_p2c->in.push_back(tuple);
-                            this->addTask(task_p2c);
+                        task_p2c->in.push_back(tuple);
+                    }
+                    this->addTask(task_p2c);
 #if (VERBOSE > 1)
-                            std::cout << "(Converter) Added TASK \"P2C\" CENTRAL (" << std::get<0>(tuple).get_frame_number() << ") size in: "
-                                      << task_p2c->in.size() << " addr: " << &task_p2c << std::endl;
+                    std::cout << "(Converter) Added TASK \"Points2Cloud\"; input: " << task_p2c->in.size() << std::endl;
 #endif
-                        }
-                        break;
-                    }
-                    case CameraType_t::FRONT:
-                    case CameraType_t::REAR:
-                    {
-#if (CONV_SPLIT_DATA == 1)
-                        // dividing data in multiple tasks
-                        for (rs2::points points : static_cast<FrameToPointsTask*>(tmp_task)->out)
-                        {
-                            auto data_raw = static_cast<const char*>(points.get_data());
-                            auto data_size = points.get_data_size(); // 18432000
-                            // rs2::points first, second; // todo: split the data
-
-                            PointsToCloudTask* task_p2c = new PointsToCloudTask();
-                            task_p2c->setTaskType(TaskType_t::TSKTYPE_P2C);
-                            task_p2c->setTaskId(taskid);
-                            task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
-                            task_p2c->in.push_back(points);
-                            this->addTask(task_p2c);
-                            std::cout << "(Converter) Added TASK \"P2C\" FRONT/REAR (" << points.get_frame_number() << ") size in: "
-                                      << task_p2c->in.size() << " addr: " << &task_p2c << std::endl;
-                        }
-
-#else
-                        for (auto tuple : static_cast<FrameToPointsTask*>(tmp_task)->out)
-                        {
-                            PointsToCloudTask* task_p2c = new PointsToCloudTask();
-                            task_p2c->setTaskType(TaskType_t::TSKTYPE_P2C);
-                            task_p2c->setTaskId(taskid);
-                            task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
-                            task_p2c->in.push_back(tuple);
-                            this->addTask(task_p2c);
-#if (VERBOSE > 1)
-                            std::cout << "(Converter) Added TASK \"P2C\" FRONT/REAR (" << std::get<0>(tuple).get_frame_number() << ") size in: "
-                                      << task_p2c->in.size() << " addr: " << &task_p2c << std::endl;
 #endif
-                        }
-#endif
-                        break;
-                    }
-                    default: break;
-                    }
                     break;
                 }
                     // Receiving pcl::PointClouds here. Pass it to the PclInterface.
-                case TaskType_t::TSKTYPE_P2C:
+                case TaskType_t::TSKTYPE_Pts2Cld:
                 {
+#if PROC_PIPE_PC_ENABLED
                     //  pcl::PointCloud<pcl::PointXYZ> tmp_pc(RS_FRAME_POINTS_COUNT,1);
                     pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_POINTS_COUNT,1));
 #if (CONV_SPLIT_DATA == 1)
@@ -127,16 +119,12 @@ void Rs2_PCL_Converter::converter_thread_func()
                     {
                         for (auto cloudtuple : static_cast<PointsToCloudTask*>(tmp_task)->out)
                         {
-                            for(auto& cloudqueue : *m_ref_to_pcl_queues)
+                            for(auto& cloudqueue : *m_ref_to_cloud_queues)
                             {
                                 if ( taskid == cloudqueue->getCameraType())
                                 {
                                     auto pc = std::get<0>(cloudtuple);
-#if RS_COLOR_ENABLED
-                                    //  cloudqueue->addCloudT(cloudtuple);
-#else
                                     cloudqueue->addCloudT(cloudtuple);
-#endif
 #if (VERBOSE > 1)
                                     std::cout << "(Converter) Added Cloud to queue " << taskid << " (" << std::get<2>(cloudtuple) << ") size: " << std::get<0>(cloudtuple)->size() << std::endl;
 #endif
@@ -148,32 +136,85 @@ void Rs2_PCL_Converter::converter_thread_func()
                     default: break;
                     }
 #endif
+#endif
                     break;
                 }
-                default: break;
+                case TSKTYPE_Frame2Depth:
+                {
+#if PROC_PIPE_MAT_ENABLED
+                    for (auto mat_tuple : static_cast<FrameToDepthTask*>(tmp_task)->out)
+                    {
+                        for(auto& matqueue : *m_ref_out_depth)
+                        {
+                            if ( taskid == matqueue->getCameraType())
+                            {
+                                matqueue->addMatT(mat_tuple);
+#if (VERBOSE > 1)
+                                std::cout << "(Converter) Added Depth Mat to queue " << taskid << " (" << std::get<0>(mat_tuple) << ") size: " << std::get<1>(mat_tuple).size() << std::endl;
+#endif
+                                break;
+                            }
+                        }
+                    }
+#endif
+                    break;
+                }
+                case TSKTYPE_Frame2Color:
+                {
+#if PROC_PIPE_MAT_ENABLED
+                    for (auto mat_tuple : static_cast<FrameToColorTask*>(tmp_task)->out)
+                    {
+                        for(auto& matqueue : *m_ref_out_color)
+                        {
+                            if ( taskid == matqueue->getCameraType())
+                            {
+                                matqueue->addMatT(mat_tuple);
+#if (VERBOSE > 1)
+                                std::cout << "(Converter) Added Color Mat to queue " << taskid << " (" << std::get<0>(mat_tuple) << ") size: " << std::get<1>(mat_tuple).size() << std::endl;
+#endif
+                                break;
+                            }
+                        }
+                    }
+#endif
+                    break;
+                }
 
+
+                default: break;
                 }
                 delete tmp_task;
             }
             else std::cerr << "(Converter) Task in output queue not ready" << std::endl;
 
         }
-        if (idle) std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_CONV_POLL_NS));
+        if (idle)
+        {
+            std::cerr << "(Converter) Idle" << std::endl;
+            std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_CONV_POLL_NS));
+        }
     }
 }
 
 
 Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, PclInterface *out_interface_ref, std::vector<CameraType_t> camera_types)
 {
-    //    m_ref_to_depth_queues = in_interface_ref->getDepthFrameData();
-    //#if RS_COLOR_ENABLED
-    //    m_ref_to_color_queues = in_interface_ref->getColorFrameData();
-    //#endif
-    m_ref_to_framesets = in_interface_ref->getFrameSetData();
-
+#if RS_DEPTH_ENABLED
+    m_ref_to_depth_queues = in_interface_ref->getDepthFrameData();
+#endif
+#if RS_COLOR_ENABLED
+    m_ref_to_color_queues = in_interface_ref->getColorFrameData();
+#endif
     m_cam_positions = camera_types;
-
-    m_ref_to_pcl_queues = out_interface_ref->getInputCloudsRef();
+#if PROC_PIPE_PC_ENABLED
+    m_ref_to_cloud_queues = out_interface_ref->getInputCloudsRef();
+#endif
+#if PROC_PIPE_MAT_ENABLED
+    m_ref_out_depth = out_interface_ref->getDepthImageRef();
+#if RS_COLOR_ENABLED
+    m_ref_out_color = out_interface_ref->getColorImageRef();
+#endif
+#endif
 }
 
 Rs2_PCL_Converter::~Rs2_PCL_Converter()
@@ -247,7 +288,7 @@ PointsToCloudTask::PointsToCloudTask()
     m_extrinsics_rear.translation[1] = static_cast<float>(TRAN_REAR_TO_CENTRAL_Y_M);
     m_extrinsics_rear.translation[2] = static_cast<float>(TRAN_REAR_TO_CENTRAL_Z_M);
 
-#if (VERBOSE > 1)
+#if (VERBOSE > 2)
     std::cout << "Transformation matrix REAR:" << std::endl
               << m_extrinsics_rear.rotation[0] << " " << m_extrinsics_rear.rotation[3] << " " << m_extrinsics_rear.rotation[6] << " " << m_extrinsics_rear.translation[0] << std::endl
               << m_extrinsics_rear.rotation[1] << " " << m_extrinsics_rear.rotation[1] << " " << m_extrinsics_rear.rotation[7] << " " << m_extrinsics_rear.translation[1] << std::endl
@@ -273,31 +314,26 @@ void FrameToPointsTask::process()
 {
     size_t i = 0;
     out.resize(in.size());
-    rs2::pointcloud tmp_rs2_pc;
+
 #if (VERBOSE > 1)
     auto start = std::chrono::high_resolution_clock::now();
 #endif
     while (in.size())
     {
-        rs2::depth_frame tmp_frame_depth = in.front().get_depth_frame();
-#if RS_COLOR_ENABLED
-        rs2::video_frame tmp_frame_color = in.front().get_color_frame();
-#endif
+        //  auto test = in.front();
+        rs2::depth_frame tmp_frame_depth = in.front().as<rs2::depth_frame>();
         in.pop_front();
+        rs2::pointcloud tmp_rs2_pc;
         rs2_metadata_type sensor_ts = 0;
-        if (tmp_frame_depth.supports_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP))
+        if (tmp_frame_depth.supports_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL))
             sensor_ts = tmp_frame_depth.get_frame_metadata(RS2_FRAME_METADATA_BACKEND_TIMESTAMP);
         else std::cerr << "(FrameToPointsTask) Error retrieving frame timestamp" << std::endl;
-#if RS_COLOR_ENABLED
-        tmp_rs2_pc.map_to(tmp_frame_color);
-        out.at(i++) = std::make_tuple(tmp_rs2_pc.calculate(tmp_frame_depth), tmp_frame_color, sensor_ts, tmp_frame_depth.get_frame_number());
-#else
         tmp_rs2_pc.map_to(tmp_frame_depth);
         out.at(i++) = std::make_tuple(tmp_rs2_pc.calculate(tmp_frame_depth), sensor_ts, tmp_frame_depth.get_frame_number());
-#endif
+        std::cout << "(Converter) FrameToPointsTask frame (" << tmp_frame_depth.get_frame_number() << ")" << std::endl;
     }
 #if (VERBOSE > 1)
-    std::cout << "(Converter) FrameToPointsTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") took " << std::chrono::duration_cast
+    std::cout << "(Converter) FrameToPointsTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") TASK TOOK " << std::chrono::duration_cast
                  <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
 #endif
     this->setTaskStatus(TASK_DONE);
@@ -312,10 +348,10 @@ void PointsToCloudTask::process()
 {
     // pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_POINTS_COUNT,1));
 #if PCL_CLOUD_ORGANIZED
-#if RS_COLOR_ENABLED
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZRGB>(RS_FRAME_WIDTH_DEPTH/RS_FILTER_DEC_MAG, RS_FRAME_HEIGHT_DEPTH/RS_FILTER_DEC_MAG));
+#if !RS_FILTER_DECIMATION_ENABLED
+    pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_WIDTH_DEPTH, RS_FRAME_HEIGHT_DEPTH));
 #else
-    pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_WIDTH_DEPTH/RS_FILTER_DEC_MAG, RS_FRAME_HEIGHT_DEPTH/RS_FILTER_DEC_MAG));
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZRGB>(RS_FRAME_WIDTH_DEPTH/RS_FILTER_DEC_MAG, RS_FRAME_HEIGHT_DEPTH/RS_FILTER_DEC_MAG));
 #endif
 #endif
     size_t i = 0;
@@ -328,33 +364,17 @@ void PointsToCloudTask::process()
         auto tuple = in.front();
         in.pop_front();
 #if !PCL_CLOUD_ORGANIZED
-#if RS_COLOR_ENABLED
-        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZRGB>());
-#else
         pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>());
 #endif
-#endif
         rs2::points tmp_points = std::get<0>(tuple);
-#if RS_COLOR_ENABLED
-        rs2::frame color = std::get<1>(tuple);
-        auto ts =  std::get<2>(tuple);
-        auto ctr =  std::get<3>(tuple);
-        points_to_pcl_rgb(tmp_points, color, tmp_pc);
-#else
-        auto ts =  std::get<1>(tuple);
-        auto ctr =  std::get<2>(tuple);
         points_to_pcl(tmp_points, tmp_pc);
-#endif
-
-
         out.at(i++) = std::make_tuple(tmp_pc, std::get<1>(tuple), std::get<2>(tuple));
     }
 #if (VERBOSE > 1)
-    std::cout << "(Converter) PointsToCloudTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") took " << std::chrono::duration_cast
+    std::cout << "(Converter) PointsToCloudTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") TASK TOOK " << std::chrono::duration_cast
                  <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
 #endif
     this->setTaskStatus(TASK_DONE);
-
 }
 
 void PointsToCloudTask::rs2_transform_point_to_point_custom(float *to_point, const rs2_extrinsics *extrin, const float *from_point)

@@ -7,17 +7,15 @@ PclInterface::PclInterface(std::vector<CameraType_t> device_types)
 {
     for (auto& camtype : device_types)
     {
-#if RS_COLOR_ENABLED
-        m_input_clouds.push_back(new CloudQueueRGB(camtype));
-#else
+
         m_input_clouds.push_back(new CloudQueue(camtype));
-#endif
+
 #if PCL_VIEWER
         m_viewer_clouds.push_back(nullptr);
 #endif
     }
 #if PCL_VIEWER
-        m_pcl_viewer.runOnVisualizationThreadOnce (viewer_callback);
+    m_pcl_viewer.runOnVisualizationThreadOnce (viewer_callback);
 #endif
 }
 
@@ -68,11 +66,9 @@ void PclInterface::pc_proc_thread_func()
 
     size_t max_times = 100;
     std::deque<long> proc_times;
-#if RS_COLOR_ENABLED
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointcloud(new pcl::PointCloud<pcl::PointXYZRGB>());
-#else
+
     pcl::PointCloud<pcl::PointXYZ>::Ptr pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
-#endif
+
     pcl::PointCloud<pcl::PointXYZ>::Ptr pc_global_extr(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::PointCloud<pcl::PointXYZ>::Ptr pc_plane_extr(new pcl::PointCloud<pcl::PointXYZ>());
 
@@ -115,6 +111,8 @@ void PclInterface::pc_proc_thread_func()
         auto pcl_proc_start = std::chrono::high_resolution_clock::now();
 #endif
         bool idle = true;
+
+#if PROC_PIPE_PC_ENABLED
         for (size_t i = 0; i < m_input_clouds.size(); i++)
         {
             auto cloudqueue = m_input_clouds.at(i);
@@ -136,7 +134,7 @@ void PclInterface::pc_proc_thread_func()
                  *
                  */
                 // 1. pcl::PassThrough() +y = conveyor dir, z+ = conveyor dist, x = conveyor width
-#if PCL_FILTER_GLOBAL_REGION_ENABLED && !RS_COLOR_ENABLED
+#if PCL_FILTER_GLOBAL_REGION_ENABLED
                 if ((true)) // 32 - 35 ms (3xtotal)
                 {
                     boxFilter.setInputCloud(pointcloud);
@@ -210,23 +208,23 @@ void PclInterface::pc_proc_thread_func()
                 m_viewer_mtx.lock();
 #if PCL_FILTER_PLANE_ENABLED
                 m_viewer_clouds.at(i) = pc_plane_extr;
-#elif PCL_FILTER_GLOBAL_REGION_ENABLED && !RS_COLOR_ENABLED
+#elif PCL_FILTER_GLOBAL_REGION_ENABLED
                 m_viewer_clouds.at(i) = pc_global_extr;
 #else
                 m_viewer_clouds.at(i) = pointcloud;
 #endif
                 m_viewer_mtx.unlock();
 #endif
-//                if (savepcd)
-//                {
-//                    if (camType == CameraType_t::CENTRAL)
-//                    {
-//                        savepcd = false;
-//                        pcl::io::savePCDFile<pcl::PointXYZ>("/home/boergi/mypcd_orig.pcd", *pointcloud);
-//                        pcl::io::savePCDFile<pcl::PointXYZ>("/home/boergi/mypcd_fil.pcd", *pc_plane_extr);
-//                        std::cerr << "SAVED" << std::endl;
-//                    }
-//                }
+                //                if (savepcd)
+                //                {
+                //                    if (camType == CameraType_t::CENTRAL)
+                //                    {
+                //                        savepcd = false;
+                //                        pcl::io::savePCDFile<pcl::PointXYZ>("/home/boergi/mypcd_orig.pcd", *pointcloud);
+                //                        pcl::io::savePCDFile<pcl::PointXYZ>("/home/boergi/mypcd_fil.pcd", *pc_plane_extr);
+                //                        std::cerr << "SAVED" << std::endl;
+                //                    }
+                //                }
                 /*
                  *
                  *
@@ -234,9 +232,11 @@ void PclInterface::pc_proc_thread_func()
                  */
             }
         }
+#endif
 
         if (idle)
         {
+            std::cerr << "(PclInterface) Idle" << std::endl;
             std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_PCL_POLL_NS));
             continue;
         }
@@ -297,8 +297,9 @@ void PclInterface::pc_proc_thread_func()
 //  align.setMaxCorrespondenceDistance (1.4f * leaf); // Inlier threshold
 //  align.setInlierFraction (0.15f); // Required inlier fraction for accepting a pose hypothesis
 
-CloudQueue::CloudQueue(CameraType_t CameraType){
+CloudQueue::CloudQueue(CameraType_t CameraType, std::string name){
     m_camtype = CameraType;
+    m_name = name;
 }
 
 void CloudQueue::addCloudT(std::tuple<pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> cloud_tuple)
@@ -307,7 +308,7 @@ void CloudQueue::addCloudT(std::tuple<pcl::PointCloud<pcl::PointXYZ>::Ptr, long 
     m_cqueue.push_back(cloud_tuple);
     if (m_cqueue.size() > QUE_SIZE_PCL)
     {
-        std::cerr << "(CloudDeque) Too many clouds in queue" << std::endl;
+        std::cerr << "(CloudQueue) Too many clouds in queue " << m_name << " " << m_camtype << std::endl;
         m_cqueue.pop_front();
     }
     m_mtx.unlock();
@@ -318,14 +319,14 @@ std::tuple<pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> C
     if (m_cqueue.size())
     {
         m_mtx.lock();
-        auto tmp_ptr = m_cqueue.front();
+        auto cloud_t = m_cqueue.front();
         m_cqueue.pop_front();
         m_mtx.unlock();
-        return tmp_ptr;
+        return cloud_t;
     }
     else
     {
-        std::cerr << "(CloudDeque) is empty" << std::endl;
+        std::cerr << "(CloudQueue) is empty " << m_name << " " << m_camtype << std::endl;
         return *m_cqueue.end();
         // return std::make_tuple(nullptr, NULL, NULL);
     }
@@ -335,8 +336,8 @@ const std::tuple<pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long l
 {
     if (m_cqueue.size())
     {
-        const auto cloud = m_cqueue.front();
-        return cloud;
+        const auto cloud_t = m_cqueue.front();
+        return cloud_t;
     }
     else
     {
@@ -348,55 +349,3 @@ const std::tuple<pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long l
 bool CloudQueue::isEmpty() { return m_cqueue.size() == 0; }
 
 CameraType_t CloudQueue::getCameraType() { return m_camtype; }
-
-CloudQueueRGB::CloudQueueRGB(CameraType_t CameraType){
-    m_camtype = CameraType;
-}
-
-void CloudQueueRGB::addCloudT(std::tuple<pcl::PointCloud<pcl::PointXYZRGB>::Ptr, long long, unsigned long long> cloud_tuple)
-{
-    m_mtx.lock();
-    m_cqueue.push_back(cloud_tuple);
-    if (m_cqueue.size() > QUE_SIZE_PCL)
-    {
-        std::cerr << "(CloudDeque) Too many clouds in queue" << std::endl;
-        m_cqueue.pop_front();
-    }
-    m_mtx.unlock();
-}
-
-std::tuple<pcl::PointCloud<pcl::PointXYZRGB>::Ptr, long long, unsigned long long> CloudQueueRGB::getCloudT()
-{
-    if (m_cqueue.size())
-    {
-        m_mtx.lock();
-        auto tmp_ptr = m_cqueue.front();
-        m_cqueue.pop_front();
-        m_mtx.unlock();
-        return tmp_ptr;
-    }
-    else
-    {
-        std::cerr << "(CloudDeque) is empty" << std::endl;
-        return *m_cqueue.end();
-        // return std::make_tuple(nullptr, NULL, NULL);
-    }
-}
-
-const std::tuple<pcl::PointCloud<pcl::PointXYZRGB>::Ptr, long long, unsigned long long> CloudQueueRGB::readCloudT()
-{
-    if (m_cqueue.size())
-    {
-        const auto cloud = m_cqueue.front();
-        return cloud;
-    }
-    else
-    {
-        std::cerr << "(CloudDeque) is empty" << std::endl;
-        return *m_cqueue.end();
-    }
-}
-
-bool CloudQueueRGB::isEmpty() { return m_cqueue.size() == 0; }
-
-CameraType_t CloudQueueRGB::getCameraType() { return m_camtype; }

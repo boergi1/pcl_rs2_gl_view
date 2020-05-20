@@ -35,6 +35,7 @@
 #include <pcl/search/organized.h>
 #include <pcl/search/kdtree.h>
 
+#include <opencv2/core/core.hpp>
 
 #include "format.h"
 #include "customtypes.h"
@@ -45,7 +46,7 @@
 class CloudQueue
 {
 public:
-    CloudQueue(CameraType_t CameraType);
+    CloudQueue(CameraType_t CameraType, std::string name = "");
     void addCloudT(std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> cloud_tuple);
     std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> getCloudT();
     const std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> readCloudT();
@@ -55,22 +56,74 @@ private:
     std::deque<std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long>>  m_cqueue;
     std::mutex m_mtx;
     CameraType_t m_camtype;
+    std::string m_name;
 };
 
-class CloudQueueRGB
+class MatQueue
 {
 public:
-    CloudQueueRGB(CameraType_t CameraType);
-    void addCloudT(std::tuple <pcl::PointCloud<pcl::PointXYZRGB>::Ptr, long long, unsigned long long> cloud_tuple);
-    std::tuple <pcl::PointCloud<pcl::PointXYZRGB>::Ptr, long long, unsigned long long> getCloudT();
-    const std::tuple <pcl::PointCloud<pcl::PointXYZRGB>::Ptr, long long, unsigned long long> readCloudT();
-    bool isEmpty();
-    CameraType_t getCameraType();
+    MatQueue(CameraType_t CameraType, std::string name)
+    {
+        m_camtype = CameraType;
+        m_name = name;
+    }
+    void addMatT(std::tuple<unsigned long long, cv::Mat, long long> mat_tuple)
+    {
+        m_mtx.lock();
+        m_mqueue.push_back(mat_tuple);
+        if (m_mqueue.size() > QUE_SIZE_PCL)
+        {
+            std::cerr << "(MatQueue) Too many Mats in queue " << m_name << " " << m_camtype << std::endl;
+            m_mqueue.pop_front();
+        }
+        m_mtx.unlock();
+    }
+
+    std::tuple<unsigned long long, cv::Mat, long long> getMatT()
+    {
+        if (m_mqueue.size())
+        {
+            m_mtx.lock();
+            auto mat_t = m_mqueue.front();
+            m_mqueue.pop_front();
+            m_mtx.unlock();
+            return mat_t;
+        }
+        else
+        {
+            std::cerr << "(MatQueue) is empty " << m_name << " " << m_camtype << std::endl;
+            return *m_mqueue.end();
+        }
+    }
+
+    const std::tuple<unsigned long long, cv::Mat, long long> readMatT()
+    {
+        if (m_mqueue.size())
+        {
+            const auto mat_t = m_mqueue.front();
+            return mat_t;
+        }
+        else
+        {
+            std::cerr << "(MatQueue) is empty " << m_name << " " << m_camtype << std::endl;
+            return *m_mqueue.end();
+        }
+    }
+
+    bool isEmpty() { return m_mqueue.size() == 0; }
+
+    CameraType_t getCameraType() { return m_camtype; }
+
 private:
-    std::deque<std::tuple <pcl::PointCloud<pcl::PointXYZRGB>::Ptr, long long, unsigned long long>>  m_cqueue;
+    std::deque<std::tuple<unsigned long long, cv::Mat, long long>> m_mqueue;
     std::mutex m_mtx;
     CameraType_t m_camtype;
+    std::string m_name;
 };
+
+
+
+
 
 class PclInterface // todo: add one thread for each camera
 {
@@ -80,20 +133,16 @@ private:
     pcl::PointCloud<pcl::PointXYZ>::Ptr m_proc_cloud = nullptr; // todo mutex this
     pcl::PointCloud<pcl::PointXYZ>::Ptr m_filtered_cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr
             (new pcl::PointCloud<pcl::PointXYZ>);
-#if RS_COLOR_ENABLED
-    std::vector< CloudQueueRGB* > m_input_clouds;
-#else
+
     std::vector< CloudQueue* > m_input_clouds;
-#endif
+    std::vector< MatQueue* > m_input_depth;
+    std::vector< MatQueue* > m_input_color;
+
     std::thread m_pc_proc_thread;
 
 #if (PCL_VIEWER == 1)
     pcl::visualization::CloudViewer m_pcl_viewer;
-#if RS_COLOR_ENABLED
-    std::vector< pcl::PointCloud<pcl::PointXYZRGB>::Ptr > m_viewer_clouds;
-#else
     std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr > m_viewer_clouds;
-#endif
     std::mutex m_viewer_mtx;
 #endif
 
@@ -102,17 +151,15 @@ private:
 public:
     PclInterface(std::vector<CameraType_t> device_count);
 
-#if RS_COLOR_ENABLED
-    std::vector<CloudQueueRGB*>* getInputCloudsRef() { return &m_input_clouds; }
-#else
     std::vector<CloudQueue *>* getInputCloudsRef() { return &m_input_clouds; }
-#endif
-#if (PCL_VIEWER == 1)
+    std::vector<MatQueue *>* getDepthImageRef() { return &m_input_depth; }
+    std::vector<MatQueue *>* getColorImageRef() { return &m_input_color; }
+
+#if PCL_VIEWER
     std::function<void (pcl::visualization::PCLVisualizer&)> viewer_callback = [](pcl::visualization::PCLVisualizer& viewer)
     {
         viewer.setBackgroundColor (1.0, 0.5, 1.0);
 #if PCL_FILTER_GLOBAL_REGION_ENABLED
-        std::cerr << "DEBUG cropregion" << std::endl;
         viewer.addCube(PCL_GLOBAL_REGION_X_MIN_M, PCL_GLOBAL_REGION_X_MAX_M, PCL_GLOBAL_REGION_Y_MIN_M, PCL_GLOBAL_REGION_Y_MAX_M,
                        PCL_GLOBAL_REGION_Z_MIN_M, PCL_GLOBAL_REGION_Z_MAX_M, 1, 0, 0, "cropregion");
         viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_WIREFRAME, "cropregion");
@@ -129,16 +176,10 @@ public:
             auto cloud = m_viewer_clouds.at(i);
             m_viewer_mtx.unlock();
             if (cloud != nullptr && !cloud->points.empty())
-            {                
+            {
                 idle = false;
                 std::string pc_id = std::to_string(i);
-#if RS_COLOR_ENABLED
-                if(!viewer.updatePointCloud<pcl::PointXYZRGB>(cloud, pc_id))
-                {
-                    viewer.addPointCloud<pcl::PointXYZRGB>(cloud, pc_id);
-                    viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, pc_id);
-                }
-#else
+
                 if(!viewer.updatePointCloud<pcl::PointXYZ>(cloud, pc_id))
                 {
                     viewer.addPointCloud<pcl::PointXYZ>(cloud, pc_id);
@@ -148,15 +189,16 @@ public:
                     //                viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_LUT,
                     //                                                        pcl::visualization::PCL_VISUALIZER_LUT_JET, "rs_cloud");
                 }
-#endif
+
             }
         }
         if (idle)
         {
+            std::cerr << "(Pcl-Viewer) Idle" << std::endl;
             std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_PCL_VIEW_NS));
             return;
         }
-      //  viewer.spinOnce(RS_FRAME_PERIOD_MS);
+        //  viewer.spinOnce(RS_FRAME_PERIOD_MS);
 #if (VERBOSE > 0)
         std::cout << "(PclInterface) Visualization callback from thread " << std::this_thread::get_id() << " took " << std::chrono::duration_cast
                      <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
@@ -203,7 +245,6 @@ public:
 
     bool isActive();
 
-    std::vector<shared_references_t> get_pcl_data_refs();
 
 };
 

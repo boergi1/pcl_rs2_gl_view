@@ -6,6 +6,16 @@
 #include <thread>
 #include <mutex>
 
+//#include <opencv2/core/utility.hpp>
+//#include <opencv2/core/core.hpp>
+//#include <opencv2/videoio.hpp>
+//#include <opencv2/highgui/highgui.hpp>
+//#include <opencv2/highgui.hpp>
+//#include <opencv2/imgproc/imgproc.hpp>
+//#include <opencv2/tracking/tracker.hpp>
+//#include <opencv2/tracking.hpp>
+//#include <opencv2/calib3d/calib3d.hpp>
+
 #include <pcl/common/common_headers.h>
 
 #include <opencv2/core/core.hpp>
@@ -20,9 +30,9 @@ private:
     rs2::context m_ctx;
     std::vector<Rs2Device*> m_rs2_devices;
 
-//    std::vector<FrameQueue*> m_depth_frame_queues;
-//    std::vector<FrameQueue*> m_color_frame_queues;
-    std::vector<FrameSetQueue*> m_frameset_queues;
+    std::vector<FrameQueue*> m_depth_frame_queues;
+    std::vector<FrameQueue*> m_color_frame_queues;
+
 
     std::vector<OcvDevice*> m_opencv_devices;
     std::vector<std::mutex *> m_opencv_devices_dev_mtxs;
@@ -93,18 +103,15 @@ public:
     }
 
 
-//    std::vector<FrameQueue*>* getDepthFrameData()
-//    {
-//        return &m_depth_frame_queues;
-//    }
-//    std::vector<FrameQueue*>* getColorFrameData()
-//    {
-//        return &m_color_frame_queues;
-//    }
-    std::vector<FrameSetQueue*>* getFrameSetData()
+    std::vector<FrameQueue*>* getDepthFrameData()
     {
-        return &m_frameset_queues;
+        return &m_depth_frame_queues;
     }
+    std::vector<FrameQueue*>* getColorFrameData()
+    {
+        return &m_color_frame_queues;
+    }
+
 
 
 };

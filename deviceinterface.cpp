@@ -47,19 +47,16 @@ std::vector<CameraType_t> DeviceInterface::connectRealSenseDevices()
         }
         
         m_depth_frame_queues.push_back(new FrameQueue(cam_id, "depth"));
+#if RS_COLOR_ENABLED
         m_color_frame_queues.push_back(new FrameQueue(cam_id, "color"));
-
-
         m_rs2_devices.push_back(new Rs2Device( dev, device_id, cam_id, m_depth_frame_queues.back(), m_color_frame_queues.back()));
-
-
+#else
+        m_rs2_devices.push_back(new Rs2Device( dev, device_id, cam_id, m_depth_frame_queues.back()));
+#endif
         m_rs2_devices.back()->setCaptureEnabled(true);
-
         devices.push_back(cam_id);
-
         device_id++;
         std::this_thread::sleep_for(std::chrono::seconds(3));
-
     }
 
     std::vector<Rs2Device*>::iterator iter = m_rs2_devices.begin();
@@ -67,10 +64,10 @@ std::vector<CameraType_t> DeviceInterface::connectRealSenseDevices()
     {
         if ( ! (*iter)->isActive() )
         {
-            std::cerr << "(DeviceInterface) Rs2Device not active: " << (*iter)->getPositionTypeStr() << std::endl;
+            std::cerr << "(DeviceInterface) Rs2Device not active: " << (*iter)->getCamTypeStr() << std::endl;
             device_id--;
             for (size_t i = 0; i < devices.size(); i++) {
-                if (devices.at(i) == (*iter)->getPositionType())
+                if (devices.at(i) == (*iter)->getCamType())
                 {
                     devices.erase(devices.begin() + i);
                     break;

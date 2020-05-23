@@ -7,6 +7,38 @@
 #include <cstdint>
 #include <math.h>
 
+#include <iostream>
+
+typedef struct camera_intrinsics_s {
+    float fx, fy, cx, cy;       // camera coeffs
+    float k1, k2, p1, p2, k3;   // distortion coeffs
+    float fov_x, fov_y;         // field of view
+    camera_intrinsics_s()
+    {
+
+    }
+    camera_intrinsics_s(float focal_x, float focal_y, float center_x, float center_y)
+    {
+        fx = focal_x; fy = focal_y; cx = center_x; cy = center_y;
+    }
+} camera_intrinsics_t;
+
+typedef struct camera_extrinsics_s {
+    float* R;
+    float* T;
+    camera_extrinsics_s(float rotation[9], float translation[3])
+    {
+        std::cerr << std::endl << "DEBUG Extrinsics" << std::endl
+                  << rotation[0] << " " << rotation[1] << " " << rotation[2] << " | " << translation[0] << std::endl
+                  << rotation[3] << " " << rotation[4] << " " << rotation[5] << " | " << translation[1] << std::endl
+                  << rotation[6] << " " << rotation[7] << " " << rotation[8] << " | " << translation[2] <<  std::endl << std::endl;
+        R = rotation; T = translation;
+    }
+    camera_extrinsics_s()
+    {
+
+    }
+} camera_extrinsics_t;
 
 typedef struct tracked_object_s {
     int x;

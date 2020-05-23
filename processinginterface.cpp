@@ -1,14 +1,21 @@
-#include "pclinterface.h"
+#include "processinginterface.h"
 
-PclInterface::PclInterface(std::vector<CameraType_t> device_types)
+ProcessingInterface::ProcessingInterface(std::vector<CameraType_t> device_types)
 #if (PCL_VIEWER == 1)
     : m_pcl_viewer("Cloud Viewer")
     #endif
 {
     for (auto& camtype : device_types)
     {
-
+#if PROC_PIPE_PC_ENABLED
         m_input_clouds.push_back(new CloudQueue(camtype));
+#endif
+#if PROC_PIPE_MAT_ENABLED
+        m_input_depth.push_back(new MatQueue(camtype, "depth"));
+#if RS_COLOR_ENABLED
+        m_input_color.push_back(new MatQueue(camtype, "color"));
+#endif
+#endif
 
 #if PCL_VIEWER
         m_viewer_clouds.push_back(nullptr);
@@ -19,17 +26,17 @@ PclInterface::PclInterface(std::vector<CameraType_t> device_types)
 #endif
 }
 
-void PclInterface::setActive(bool running)
+void ProcessingInterface::setActive(bool running)
 {
     if (running)
     {
         if ( m_pc_proc_thread.joinable() )
         {
-            std::cerr << "(PclInterface) Thread already running: " << m_pc_proc_thread.get_id() << std::endl;
+            std::cerr << "(ProcessingInterface) Thread already running: " << m_pc_proc_thread.get_id() << std::endl;
             return;
         }
         m_active = true;
-        m_pc_proc_thread = std::thread(&PclInterface::pc_proc_thread_func, this);
+        m_pc_proc_thread = std::thread(&ProcessingInterface::pc_proc_thread_func, this);
 #if (PCL_VIEWER == 1)
         // m_pcl_viewer.runOnVisualizationThreadOnce (viewer_callback);
         m_pcl_viewer.runOnVisualizationThread (viewer_update_callback, "ViewerCallback");
@@ -55,11 +62,11 @@ void PclInterface::setActive(bool running)
     return;
 }
 
-bool PclInterface::isActive() { return m_active; }
+bool ProcessingInterface::isActive() { return m_active; }
 
-void PclInterface::pc_proc_thread_func()
+void ProcessingInterface::pc_proc_thread_func()
 {
-    std::cout << "PCL thread started # " << std::this_thread::get_id() << std::endl;
+    std::cout << "Proc thread started # " << std::this_thread::get_id() << std::endl;
     //#if (PCL_VIEWER == 1)
     //    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_downsampled (new pcl::PointCloud<pcl::PointXYZ>);
     //#endif
@@ -108,9 +115,56 @@ void PclInterface::pc_proc_thread_func()
     while (m_active)
     {
 #if (VERBOSE > 0)
-        auto pcl_proc_start = std::chrono::high_resolution_clock::now();
+        auto proc_start = std::chrono::high_resolution_clock::now();
 #endif
         bool idle = true;
+
+#if PROC_PIPE_MAT_ENABLED
+
+        for (size_t i = 0; i < m_input_depth.size(); i++)
+        {
+            auto depthqueue = m_input_depth.at(i);
+            if ( !depthqueue->isEmpty() )
+            {
+                idle = false;
+                auto camType = depthqueue->getCameraType();
+                auto mat_t_depth = depthqueue->getMatT();
+                auto count = std::get<0>(mat_t_depth);
+                auto mat_depth = std::get<1>(mat_t_depth);
+                auto ts = std::get<2>(mat_t_depth);
+#if (VERBOSE > 0)
+                std::cout << "(ProcessingInterface) Depth image received from camera " << camType << " (" << count << ") size: " << mat_depth.size() << std::endl;
+#endif
+                //  cv::applyColorMap(mat_depth, mat_depth, cv::COLORMAP_JET);
+                double min, max;
+                cv::minMaxLoc(mat_depth, &min, &max);
+                auto test = std::numeric_limits<unsigned short>::max();
+                double scale = test / max;
+                cv::imshow("depth "+std::to_string(camType), mat_depth*scale);
+
+            }
+        }
+#if RS_COLOR_ENABLED
+        for (size_t i = 0; i < m_input_color.size(); i++)
+        {
+            auto colorqueue = m_input_color.at(i);
+            if ( !colorqueue->isEmpty() )
+            {
+                idle = false;
+                auto camType = colorqueue->getCameraType();
+                auto mat_t_color = colorqueue->getMatT();
+                auto count = std::get<0>(mat_t_color);
+                auto mat_color = std::get<1>(mat_t_color);
+                auto ts = std::get<2>(mat_t_color);
+#if (VERBOSE > 0)
+                std::cout << "(ProcessingInterface) Color image received from camera " << camType << " (" << count << ") size: " << mat_color.size() << std::endl;
+#endif
+                cv::imshow("color "+std::to_string(camType), mat_color);
+            }
+        }
+#endif
+        cv::waitKey(1);
+#endif
 
 #if PROC_PIPE_PC_ENABLED
         for (size_t i = 0; i < m_input_clouds.size(); i++)
@@ -125,9 +179,9 @@ void PclInterface::pc_proc_thread_func()
                 auto ts = std::get<1>(cloudt);
                 auto ctr = std::get<2>(cloudt);
 #if (VERBOSE > 0)
-                std::cout << "(PclInterface) PointCloud received from camera " << camType << " (" << ctr << "), organized: " << pointcloud->isOrganized()
+                std::cout << "(ProcessingInterface) PointCloud received from camera " << camType << " (" << ctr << "), organized: " << pointcloud->isOrganized()
                           << " size: " << pointcloud->points.size() << std::endl;
-#endif                
+#endif
                 /*
                  *
                  *
@@ -146,8 +200,8 @@ void PclInterface::pc_proc_thread_func()
                     conditionalRemoval.setCondition (range_cond);
                     conditionalRemoval.filter(*pc_global_extr);
                 }
-                std::cout << "(PclInterface) DEBUG after region camera " << camType << " size: " << pc_global_extr->points.size() << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
-                             (std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
+                std::cout << "(ProcessingInterface) DEBUG after region camera " << camType << " size: " << pc_global_extr->points.size() << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
+                             (std::chrono::high_resolution_clock::now()-proc_start).count() << " ms" << std::endl;
 #endif
                 // 2. remove planar surface
                 /* without axis: > 2s (3xtotal)
@@ -170,7 +224,7 @@ void PclInterface::pc_proc_thread_func()
                 if (inliers->indices.size() == 0)
                     PCL_ERROR ("Could not estimate a planar model for the given dataset.");
 
-                std::cout << "(PclInterface) DEBUG after planar segmentation camera " << camType << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
+                std::cout << "(ProcessingInterface) DEBUG after planar segmentation camera " << camType << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
                              (std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
 
                 // Remove found surface -> 25ms
@@ -193,7 +247,7 @@ void PclInterface::pc_proc_thread_func()
                 std::cout << "Model inliers: " << inliers->indices.size() << std::endl;
 #endif
 
-                std::cout << "(PclInterface) DEBUG after planar extraction camera " << camType << " size: " << pc_plane_extr->points.size() << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
+                std::cout << "(ProcessingInterface) DEBUG after planar extraction camera " << camType << " size: " << pc_plane_extr->points.size() << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
                              (std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
 
 
@@ -236,23 +290,23 @@ void PclInterface::pc_proc_thread_func()
 
         if (idle)
         {
-            std::cerr << "(PclInterface) Idle" << std::endl;
+            std::cerr << "(ProcessingInterface) Idle" << std::endl;
             std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_PCL_POLL_NS));
             continue;
         }
 #if (VERBOSE > 0)
-        auto pcl_proc_end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(pcl_proc_end-pcl_proc_start).count();
+        auto proc_end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(proc_end-proc_start).count();
 
         proc_times.push_back(duration);
         if (proc_times.size() > max_times)
             proc_times.pop_front();
 
         double average = std::accumulate(proc_times.begin(), proc_times.end(), 0.0) / proc_times.size() ;
-        std::cout << "(PclInterface) Processing thread took (avg) " << std::fixed << std::setprecision(2) << average << " ms" << std::endl;
+        std::cout << "(ProcessingInterface) Processing thread took (avg) " << std::fixed << std::setprecision(2) << average << " ms" << std::endl;
 #endif
     }
-    std::cout << "(PclInterface) Exiting thread" << std::endl;
+    std::cout << "(ProcessingInterface) Exiting thread" << std::endl;
 }
 
 

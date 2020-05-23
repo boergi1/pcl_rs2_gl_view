@@ -44,7 +44,7 @@
 #if FILTER_DEPTH_RS_ENABLED
 #define RS_FILTER_DEC_MAG 2.0f // (min: 1, max: 8, step: 1)
 #define RS_FILTER_THR_MIN 0.4f // (min: 0, max: 16, step: 0.1)
-#define RS_FILTER_THR_MAX 8.0f // (min: 0, max: 16, step: 0.1)
+#define RS_FILTER_THR_MAX 2.0f // (min: 0, max: 16, step: 0.1)
 #define RS_FILTER_SPA_MAG 2.0f // (min: 1, max: 5, step: 1)
 #define RS_FILTER_SPA_ALPHA 0.50f // (min: 0.25, max: 1, step: 0.01)
 #define RS_FILTER_SPA_DELTA 20.0f // (min: 1, max: 50, step: 1)
@@ -54,21 +54,27 @@
 
 // Converter
 #define CONV_RS_ROTATION_AXIS "y" // todo: init t matrix in converter constructor
+#define CONV_RS_ROTATION_AXES "yxz"
+
 #define TRAN_FRONT_TO_CENTRAL_X_M 0.0
 #define TRAN_FRONT_TO_CENTRAL_Y_M -0.020
 #define TRAN_FRONT_TO_CENTRAL_Z_M -0.010
-#define ROT_FRONT_TO_CENTRAL_ANG -90.0
+#define ROT_FRONT_TO_CENTRAL_ANG_X -90.0
+#define ROT_FRONT_TO_CENTRAL_ANG_Y 0.0
+#define ROT_FRONT_TO_CENTRAL_ANG_Z 0.0
 #define TRAN_REAR_TO_CENTRAL_X_M 0.0
 #define TRAN_REAR_TO_CENTRAL_Y_M 0.020
 #define TRAN_REAR_TO_CENTRAL_Z_M -0.010
-#define ROT_REAR_TO_CENTRAL_ANG 90.0
+#define ROT_REAR_TO_CENTRAL_ANG_X 90.0
+#define ROT_REAR_TO_CENTRAL_ANG_Y 0.0
+#define ROT_REAR_TO_CENTRAL_ANG_Z 0.0
 
 #define CONV_THREAD_POOL_SIZE 7
 #define CONV_SPLIT_DATA 0 // not yet implemented
 // PCL processing
 #define PCL_CLOUD_ORGANIZED 1
 // PCL filters
-#define PCL_FILTER_GLOBAL_REGION_ENABLED 1
+#define PCL_FILTER_GLOBAL_REGION_ENABLED 0
 #if PCL_FILTER_GLOBAL_REGION_ENABLED
 #define PCL_GLOBAL_REGION_X_MIN_M -1.0 // +-
 #define PCL_GLOBAL_REGION_X_MAX_M 1.0 // +-
@@ -110,7 +116,7 @@
 #define CV_REF_SIZE_MM 26
 
 // Toggle viewers
-#define PCL_VIEWER 1
+#define PCL_VIEWER 0
 #define IMSHOW_CV 1
 
 #define GL_DRAW_POINTCLOUD 0

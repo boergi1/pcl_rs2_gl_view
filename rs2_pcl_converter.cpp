@@ -1,4 +1,4 @@
-#include "rs2_pcl_converter.h"
+﻿#include "rs2_pcl_converter.h"
 
 void Rs2_PCL_Converter::converter_thread_func()
 {
@@ -13,68 +13,81 @@ void Rs2_PCL_Converter::converter_thread_func()
         {
             auto queue_depth = m_ref_to_depth_queues->at(i);
 
-            if (queue_depth->size())
+
+            if (!queue_depth->isEmpty())
             {
                 idle = false;
+                rs2::depth_frame depth_frame = queue_depth->getFrame().as<rs2::depth_frame>();
+
+
+                // Conversion to cv::Mat without tasks
+
+                for(auto& matqueue_depth : *m_ref_out_depth)
+                {
+                    if ( queue_depth->getCameraType() == matqueue_depth->getCameraType())
+                    {
+                        long long ts = 0;
+                        if (depth_frame.supports_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL))
+                            ts = depth_frame.get_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL);
+                        matqueue_depth->addMatT(std::make_tuple(depth_frame.get_frame_number(), cv::Mat(cv::Size(depth_frame.get_width(), depth_frame.get_height()),
+                                                                                                        CV_16UC1, (void*)depth_frame.get_data(), cv::Mat::AUTO_STEP), ts));
+#if (VERBOSE > 1)
+                        std::cout << "(Converter) Added Depth frame to MatQueue (" << depth_frame.get_frame_number() << ")" << std::endl;
+#endif
+                        break;
+                    }
+                }
 #if RS_COLOR_ENABLED
                 auto queue_color = m_ref_to_color_queues->at(i);
-#endif
-
-#if PROC_PIPE_MAT_ENABLED
-                //                while ( !queue_depth->isEmpty() )
-                //                {
-                FrameToDepthTask* depth_task = new FrameToDepthTask();
-                depth_task->setTaskType(TaskType_t::TSKTYPE_Frame2Depth);
-                depth_task->setTaskId(m_cam_positions.at(i));
-                depth_task->setTaskStatus(BaseTask::WORK_TO_DO);
-                rs2::frame depth_frame = queue_depth->getFrame();
-                depth_task->in.push_back(std::make_pair(depth_frame.get_frame_number(), depth_frame));
-                this->addTask(depth_task);
-#if RS_COLOR_ENABLED
-                FrameToColorTask* color_task = new FrameToColorTask();
-                color_task->setTaskType(TaskType_t::TSKTYPE_Frame2Color);
-                color_task->setTaskId(m_cam_positions.at(i));
-                color_task->setTaskStatus(BaseTask::WORK_TO_DO);
-                rs2::frame color_frame = queue_color->getFrame();
-                if (color_frame)
+                if  (!queue_color->isEmpty())
                 {
-                    color_task->in.push_back(std::make_pair(depth_frame.get_frame_number(), color_frame));
-                    this->addTask(color_task);
-                }
-
-#endif
-
-                //                }
-#endif
-
-#if PROC_PIPE_PC_ENABLED
-                FrameToPointsTask* task_f2p = new FrameToPointsTask();
-                task_f2p->setTaskType(TaskType_t::TSKTYPE_Frame2Pts);
-                task_f2p->setTaskId(m_cam_positions.at(i));
-                task_f2p->setTaskStatus(BaseTask::WORK_TO_DO);
-                while ( !queue_depth->isEmpty() )
-                {
-                    idle = false;
-                    task_f2p->in.push_back(queue_depth->getFrame());
-                }
+                    rs2::video_frame color_frame = queue_color->getFrame().as<rs2::video_frame>();
+                    for(auto& matqueue_color : *m_ref_out_color)
+                    {
+                        if ( queue_color->getCameraType() == matqueue_color->getCameraType())
+                        {
+                            long long ts = 0;
+                            if (color_frame.supports_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL))
+                                ts = color_frame.get_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL);
+                            matqueue_color->addMatT(std::make_tuple(depth_frame.get_frame_number(), cv::Mat(cv::Size(color_frame.get_width(), color_frame.get_height()),
+                                                                                                            CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP), ts));
 #if (VERBOSE > 1)
-                std::cout << "(Converter) Added TASK \"Depth2Points\"; input: " << task_f2p->in.size() << std::endl;
+                            std::cout << "(Converter) Added Color frame to MatQueue (" << depth_frame.get_frame_number() << ")" << std::endl;
 #endif
-                this->addTask(task_f2p);
+                            break;
+                        }
+                    }
+                }
+                else std::cerr << "(Converter) No valid color for corresponding depth frame" << std::endl;
 #endif
+
+                // Depth to 3D Cloud task
+                FrameToCloudTask* task_f2c = new FrameToCloudTask(queue_depth->getIntrinsics(), &m_extrinsics.at(i));
+                task_f2c->setTaskType(TaskType_t::TSKTYPE_Frame2Cloud);
+                task_f2c->setTaskId(m_cam_types.at(i));
+                task_f2c->setTaskStatus(BaseTask::WORK_TO_DO);
+                task_f2c->in.push_back(std::make_pair(depth_frame.get_frame_number(), depth_frame));
+
+                //#if PROC_PIPE_PC_ENABLED
+                //                FrameToPointsTask* task_f2p = new FrameToPointsTask();
+                //                task_f2p->setTaskType(TaskType_t::TSKTYPE_Frame2Pts);
+                //                task_f2p->setTaskId(m_cam_types.at(i));
+                //                task_f2p->setTaskStatus(BaseTask::WORK_TO_DO);
+                //                //                while ( !queue_depth->isEmpty() )
+                //                //                {
+                //                task_f2p->in.push_back(depth_frame);
+                //                //                }
+                //#if (VERBOSE > 1)
+                //                std::cout << "(Converter) Added TASK \"Depth2Points\"; input: " << task_f2p->in.size() << std::endl;
+                //#endif
+                //                this->addTask(task_f2p);
+                //#endif
             }
         }
 
         // Read tasks from output
         while(this->OutputQueue.size())
         {
-            //            typedef enum
-            //            {
-            //                TSKTYPE_Frame2Pts = 0,
-            //                TSKTYPE_Pts2Cld,
-            //                TSKTYPE_Frame2Depth,
-            //                TSKTYPE_Frame2Color
-            //            } TaskType_t;
             idle = false;
             BaseTask* tmp_task = getTask();
             auto taskid = tmp_task->getTaskId();
@@ -85,63 +98,64 @@ void Rs2_PCL_Converter::converter_thread_func()
                 // Read converted points and create new tasks
                 case TaskType_t::TSKTYPE_Frame2Pts:
                 {
-#if PROC_PIPE_PC_ENABLED
-                    PointsToCloudTask* task_p2c = new PointsToCloudTask();
-                    task_p2c->setTaskType(TaskType_t::TSKTYPE_Pts2Cld);
-                    task_p2c->setTaskId(taskid);
-                    task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
-                    for (auto tuple : static_cast<FrameToPointsTask*>(tmp_task)->out)
-                    {
-                        task_p2c->in.push_back(tuple);
-                    }
-                    this->addTask(task_p2c);
-#if (VERBOSE > 1)
-                    std::cout << "(Converter) Added TASK \"Points2Cloud\"; input: " << task_p2c->in.size() << std::endl;
-#endif
-#endif
+                    //#if PROC_PIPE_PC_ENABLED
+                    //                    PointsToCloudTask* task_p2c = new PointsToCloudTask();
+                    //                    task_p2c->setTaskType(TaskType_t::TSKTYPE_Pts2Cld);
+                    //                    task_p2c->setTaskId(taskid);
+                    //                    task_p2c->setTaskStatus(BaseTask::WORK_TO_DO);
+                    //                    for (auto tuple : static_cast<FrameToPointsTask*>(tmp_task)->out)
+                    //                    {
+                    //                        task_p2c->in.push_back(tuple);
+                    //                    }
+                    //                    this->addTask(task_p2c);
+                    //#if (VERBOSE > 1)
+                    //                    std::cout << "(Converter) Added TASK \"Points2Cloud\"; input: " << task_p2c->in.size() << std::endl;
+                    //#endif
+                    //#endif
                     break;
                 }
                     // Receiving pcl::PointClouds here. Pass it to the PclInterface.
                 case TaskType_t::TSKTYPE_Pts2Cld:
                 {
-#if PROC_PIPE_PC_ENABLED
-                    //  pcl::PointCloud<pcl::PointXYZ> tmp_pc(RS_FRAME_POINTS_COUNT,1);
-                    pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_POINTS_COUNT,1));
-#if (CONV_SPLIT_DATA == 1)
+                    //#if PROC_PIPE_PC_ENABLED
+                    //                    //  pcl::PointCloud<pcl::PointXYZ> tmp_pc(RS_FRAME_POINTS_COUNT,1);
+                    //                    pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pc(new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_POINTS_COUNT,1));
+                    //#if (CONV_SPLIT_DATA == 1)
 
-                    // combining clouds from tasks
+                    //                    // combining clouds from tasks
 
-#else
-                    switch (taskid) {
-                    case CameraType_t::CENTRAL:
-                    case CameraType_t::FRONT:
-                    case CameraType_t::REAR:
-                    {
-                        for (auto cloudtuple : static_cast<PointsToCloudTask*>(tmp_task)->out)
-                        {
-                            for(auto& cloudqueue : *m_ref_to_cloud_queues)
-                            {
-                                if ( taskid == cloudqueue->getCameraType())
-                                {
-                                    auto pc = std::get<0>(cloudtuple);
-                                    cloudqueue->addCloudT(cloudtuple);
-#if (VERBOSE > 1)
-                                    std::cout << "(Converter) Added Cloud to queue " << taskid << " (" << std::get<2>(cloudtuple) << ") size: " << std::get<0>(cloudtuple)->size() << std::endl;
-#endif
-                                }
-                            }
-                        }
-                        break;
-                    }
-                    default: break;
-                    }
-#endif
-#endif
+                    //#else
+                    //                    switch (taskid) {
+                    //                    case CameraType_t::CENTRAL:
+                    //                    case CameraType_t::FRONT:
+                    //                    case CameraType_t::REAR:
+                    //                    {
+                    //                        for (auto cloudtuple : static_cast<PointsToCloudTask*>(tmp_task)->out)
+                    //                        {
+                    //                            for(auto& cloudqueue : *m_ref_to_cloud_queues)
+                    //                            {
+                    //                                if ( taskid == cloudqueue->getCameraType())
+                    //                                {
+                    //                                    auto pc = std::get<0>(cloudtuple);
+                    //                                    cloudqueue->addCloudT(cloudtuple);
+                    //#if (VERBOSE > 1)
+                    //                                    std::cout << "(Converter) Added Cloud to queue " << taskid << " (" << std::get<2>(cloudtuple) << ") size: " << std::get<0>(cloudtuple)->size() << std::endl;
+                    //#endif
+                    //                                }
+                    //                            }
+                    //                        }
+                    //                        break;
+                    //                    }
+                    //                    default: break;
+                    //                    }
+                    //#endif
+                    //#endif
                     break;
                 }
                 case TSKTYPE_Frame2Depth:
                 {
-#if PROC_PIPE_MAT_ENABLED
+
+
                     for (auto mat_tuple : static_cast<FrameToDepthTask*>(tmp_task)->out)
                     {
                         for(auto& matqueue : *m_ref_out_depth)
@@ -156,12 +170,14 @@ void Rs2_PCL_Converter::converter_thread_func()
                             }
                         }
                     }
-#endif
+
+
+
                     break;
                 }
                 case TSKTYPE_Frame2Color:
                 {
-#if PROC_PIPE_MAT_ENABLED
+#if RS_COLOR_ENABLED
                     for (auto mat_tuple : static_cast<FrameToColorTask*>(tmp_task)->out)
                     {
                         for(auto& matqueue : *m_ref_out_color)
@@ -179,8 +195,25 @@ void Rs2_PCL_Converter::converter_thread_func()
 #endif
                     break;
                 }
-
-
+                case TSKTYPE_Frame2Cloud:
+                {
+                    for (auto cloudtuple : static_cast<FrameToCloudTask*>(tmp_task)->out)
+                    {
+                        for(auto& cloudqueue : *m_ref_to_cloud_queues)
+                        {
+                            if ( taskid == cloudqueue->getCameraType())
+                            {
+                                auto pc = std::get<0>(cloudtuple);
+                              //  cloudqueue->addCloudT(cloudtuple);
+#if (VERBOSE > 10)
+                                std::cout << "(Converter) Added DepthCloud to queue " << taskid << " ("
+                                          << std::get<2>(cloudtuple) << ") size: " << std::get<0>(cloudtuple)->size() << std::endl;
+#endif
+                            }
+                        }
+                    }
+                    break;
+                }
                 default: break;
                 }
                 delete tmp_task;
@@ -197,7 +230,7 @@ void Rs2_PCL_Converter::converter_thread_func()
 }
 
 
-Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, PclInterface *out_interface_ref, std::vector<CameraType_t> camera_types)
+Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, ProcessingInterface *out_interface_ref, std::vector<CameraType_t> camera_types)
 {
 #if RS_DEPTH_ENABLED
     m_ref_to_depth_queues = in_interface_ref->getDepthFrameData();
@@ -205,7 +238,7 @@ Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, PclInter
 #if RS_COLOR_ENABLED
     m_ref_to_color_queues = in_interface_ref->getColorFrameData();
 #endif
-    m_cam_positions = camera_types;
+    m_cam_types = camera_types;
 #if PROC_PIPE_PC_ENABLED
     m_ref_to_cloud_queues = out_interface_ref->getInputCloudsRef();
 #endif
@@ -215,6 +248,87 @@ Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, PclInter
     m_ref_out_color = out_interface_ref->getColorImageRef();
 #endif
 #endif
+
+    // Calculate extrinsic camera parameters
+    cv::Mat R_identity = cv::Mat::eye(3,3, CV_32F);
+    cv::Mat T_zero = cv::Mat::zeros(3,1,CV_32F);
+
+    for (size_t i=0; i<m_cam_types.size(); i++) {
+
+        float rot_x, rot_y, rot_z, tran_x, tran_y, tran_z;
+
+        switch (m_cam_types.at(i)) {
+        case CameraType_t::CENTRAL:
+        {
+            // No transformation
+            m_extrinsics.push_back(camera_extrinsics_t((float*)R_identity.data, (float*)T_zero.data));
+            continue;
+        }
+        case CameraType_t::FRONT:
+        {
+            rot_x = static_cast<float>(degreesToRadians(ROT_FRONT_TO_CENTRAL_ANG_X));
+            rot_y = static_cast<float>(degreesToRadians(ROT_FRONT_TO_CENTRAL_ANG_Y));
+            rot_z = static_cast<float>(degreesToRadians(ROT_FRONT_TO_CENTRAL_ANG_Z));
+            tran_x = static_cast<float>(TRAN_FRONT_TO_CENTRAL_X_M);
+            tran_y = static_cast<float>(TRAN_FRONT_TO_CENTRAL_Y_M);
+            tran_z = static_cast<float>(TRAN_FRONT_TO_CENTRAL_Z_M);
+            break;
+        }
+        case CameraType_t::REAR:
+        {
+            rot_x = static_cast<float>(degreesToRadians(ROT_REAR_TO_CENTRAL_ANG_X));
+            rot_y = static_cast<float>(degreesToRadians(ROT_REAR_TO_CENTRAL_ANG_Y));
+            rot_z = static_cast<float>(degreesToRadians(ROT_REAR_TO_CENTRAL_ANG_Z));
+            tran_x = static_cast<float>(TRAN_REAR_TO_CENTRAL_X_M);
+            tran_y = static_cast<float>(TRAN_REAR_TO_CENTRAL_Y_M);
+            tran_z = static_cast<float>(TRAN_REAR_TO_CENTRAL_Z_M);
+            break;
+        }
+        default:
+        {
+            std::cerr << "(Converter) Extrinsics for camera type " << m_cam_types.at(i) << " not defined" << std::endl;
+            m_extrinsics.push_back(camera_extrinsics_t((float*)R_identity.data, (float*)T_zero.data));
+            continue;
+        }
+        }
+
+        cv::Mat R_x = (cv::Mat_<float>(3,3) <<
+                       1, 0, 0,
+                       0, std::cos(rot_x), -std::sin(rot_x),
+                       0, std::sin(rot_x), std::cos(rot_x));
+        cv::Mat R_y = (cv::Mat_<float>(3,3) <<
+                       std::cos(rot_y), 0, std::sin(rot_y),
+                       0, 1, 0,
+                       -std::sin(rot_y), 0, std::cos(rot_y));
+        cv::Mat R_z = (cv::Mat_<float>(3,3) <<
+                       std::cos(rot_z), -std::sin(rot_z), 0,
+                       std::sin(rot_z), std::cos(rot_z), 0,
+                       0, 0, 1);
+        cv::Mat R = (cv::Mat_<float>(3,3));
+        cv::Mat T = (cv::Mat_<float>(3,1) << tran_x, tran_y, tran_z);
+
+        if (CONV_RS_ROTATION_AXES == "xyz")
+            R = R_z * R_y * R_x;
+        else if (CONV_RS_ROTATION_AXES == "xzy")
+            R = R_y * R_z * R_x;
+        else if (CONV_RS_ROTATION_AXES == "yxz")
+            R = R_z * R_x * R_y;
+        else if (CONV_RS_ROTATION_AXES == "yzx")
+            R = R_x * R_z * R_y;
+        else if (CONV_RS_ROTATION_AXES == "zxy")
+            R = R_y * R_x * R_z;
+        else if (CONV_RS_ROTATION_AXES == "zyx")
+            R = R_x * R_y * R_z;
+        else {
+            std::cerr << "(Converter) Invalid rotation axis specified" << std::endl;
+            m_extrinsics.push_back(camera_extrinsics_t((float*)R_identity.data, (float*)T_zero.data));
+            continue;
+        }
+        m_extrinsics.push_back(camera_extrinsics_t((float*)R.data, (float*)T.data));
+    }
+
+
+
 }
 
 Rs2_PCL_Converter::~Rs2_PCL_Converter()
@@ -234,8 +348,8 @@ bool Rs2_PCL_Converter::isActive() { return m_active; }
 
 PointsToCloudTask::PointsToCloudTask()
 {
-    float rad_front = static_cast<float>(degreesToRadians(ROT_FRONT_TO_CENTRAL_ANG));
-    float rad_rear = static_cast<float>(degreesToRadians(ROT_REAR_TO_CENTRAL_ANG));
+    float rad_front = static_cast<float>(degreesToRadians(ROT_FRONT_TO_CENTRAL_ANG_X));
+    float rad_rear = static_cast<float>(degreesToRadians(ROT_REAR_TO_CENTRAL_ANG_X));
     if (CONV_RS_ROTATION_AXIS == "X" || CONV_RS_ROTATION_AXIS == "x")
     {
         m_extrinsics_front.rotation[0] = 1; m_extrinsics_front.rotation[3] = 0;             m_extrinsics_front.rotation[6] = 0;

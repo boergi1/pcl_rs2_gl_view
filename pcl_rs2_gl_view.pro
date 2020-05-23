@@ -8,7 +8,7 @@ SOURCES += \
         deviceinterface.cpp \
         main.cpp \
         ocvdevice.cpp \
-        pclinterface.cpp \
+        processinginterface.cpp \
         rs2_pcl_converter.cpp \
         rs2device.cpp \
         threadcontroller.cpp
@@ -18,7 +18,7 @@ HEADERS += \
     deviceinterface.h \
     format.h \
     ocvdevice.h \
-    pclinterface.h \
+    processinginterface.h \
     rs2_glgraphics.hpp \
     rs2_pcl_converter.h \
     rs2device.h \

@@ -1,5 +1,5 @@
-#ifndef PCLINTERFACE_H
-#define PCLINTERFACE_H
+#ifndef PROCESSINGINTERFACE_H
+#define PROCESSINGINTERFACE_H
 
 #include <pcl/point_types.h>
 //#include <pcl/point_cloud.h> // ?
@@ -36,6 +36,8 @@
 #include <pcl/search/kdtree.h>
 
 #include <opencv2/core/core.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 
 #include "format.h"
 #include "customtypes.h"
@@ -43,11 +45,14 @@
 #include <mutex>
 #include <chrono>
 
+/* TODO: Add class for each device with its own processing thread*/
+
 class CloudQueue
 {
 public:
     CloudQueue(CameraType_t CameraType, std::string name = "");
     void addCloudT(std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> cloud_tuple);
+    // <std::tuple<unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long>>
     std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> getCloudT();
     const std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> readCloudT();
     bool isEmpty();
@@ -121,11 +126,7 @@ private:
     std::string m_name;
 };
 
-
-
-
-
-class PclInterface // todo: add one thread for each camera
+class ProcessingInterface // todo: add one thread for each camera
 {
 private:
     bool m_active;
@@ -149,7 +150,7 @@ private:
     void pc_proc_thread_func();
 
 public:
-    PclInterface(std::vector<CameraType_t> device_count);
+    ProcessingInterface(std::vector<CameraType_t> device_count);
 
     std::vector<CloudQueue *>* getInputCloudsRef() { return &m_input_clouds; }
     std::vector<MatQueue *>* getDepthImageRef() { return &m_input_depth; }
@@ -200,7 +201,7 @@ public:
         }
         //  viewer.spinOnce(RS_FRAME_PERIOD_MS);
 #if (VERBOSE > 0)
-        std::cout << "(PclInterface) Visualization callback from thread " << std::this_thread::get_id() << " took " << std::chrono::duration_cast
+        std::cout << "(Pcl-Viewer) Visualization callback from thread " << std::this_thread::get_id() << " took " << std::chrono::duration_cast
                      <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
 #endif
 
@@ -248,4 +249,4 @@ public:
 
 };
 
-#endif // PCLINTERFACE_H
+#endif

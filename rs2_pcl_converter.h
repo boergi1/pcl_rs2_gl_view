@@ -43,44 +43,44 @@ typedef enum
     TSKTYPE_Frame2Cloud
 } TaskType_t;
 
-class FrameToDepthTask : public BaseTask
-{
-public:
-    FrameToDepthTask()
-    {
+//class FrameToDepthTask : public BaseTask
+//{
+//public:
+//    FrameToDepthTask()
+//    {
 
-    }
-    virtual ~FrameToDepthTask() override
-    {
+//    }
+//    virtual ~FrameToDepthTask() override
+//    {
 
-    }
+//    }
 
-    std::deque<std::pair<unsigned long long, rs2::frame>> in;
-    std::vector<std::tuple<unsigned long long, cv::Mat, long long>> out;
-    void process() override
-    {
-        size_t i = 0;
-        out.resize(in.size());
-#if (VERBOSE > 1)
-        auto start = std::chrono::high_resolution_clock::now();
-#endif
-        while (in.size())
-        {
-            auto tmp_pair = in.front();
-            in.pop_front();
-            rs2::depth_frame frame = tmp_pair.second.as<rs2::depth_frame>();
-            long long ts = 0;
-            if (frame.supports_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL))
-                ts = frame.get_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL);
-            out.at(i++) = std::make_tuple(tmp_pair.first, cv::Mat(cv::Size(frame.get_width(), frame.get_height()), CV_16UC1, (void*)frame.get_data(), cv::Mat::AUTO_STEP), ts);
-        }
-        this->setTaskStatus(TASK_DONE);
-#if (VERBOSE > 1)
-        std::cout << "(Converter) FrameToDepthTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") took " << std::chrono::duration_cast
-                     <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
-#endif
-    }
-};
+//    std::deque<std::pair<unsigned long long, rs2::frame>> in;
+//    std::vector<std::tuple<unsigned long long, cv::Mat, long long>> out;
+//    void process() override
+//    {
+//        size_t i = 0;
+//        out.resize(in.size());
+//#if (VERBOSE > 1)
+//        auto start = std::chrono::high_resolution_clock::now();
+//#endif
+//        while (in.size())
+//        {
+//            auto tmp_pair = in.front();
+//            in.pop_front();
+//            rs2::depth_frame frame = tmp_pair.second.as<rs2::depth_frame>();
+//            long long ts = 0;
+//            if (frame.supports_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL))
+//                ts = frame.get_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL);
+//            out.at(i++) = std::make_tuple(tmp_pair.first, cv::Mat(cv::Size(frame.get_width(), frame.get_height()), CV_16UC1, (void*)frame.get_data(), cv::Mat::AUTO_STEP), ts);
+//        }
+//        this->setTaskStatus(TASK_DONE);
+//#if (VERBOSE > 1)
+//        std::cout << "(Converter) FrameToDepthTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") took " << std::chrono::duration_cast
+//                     <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
+//#endif
+//    }
+//};
 
 //class FrameToDepthCloudTask : public BaseTask
 //{
@@ -153,75 +153,75 @@ public:
 
 
 
-class FrameToColorTask : public BaseTask
-{
-public:
-    FrameToColorTask()
-    {
+//class FrameToColorTask : public BaseTask
+//{
+//public:
+//    FrameToColorTask()
+//    {
 
-    }
-    virtual ~FrameToColorTask() override
-    {
+//    }
+//    virtual ~FrameToColorTask() override
+//    {
 
-    }
+//    }
 
-    std::deque<std::pair<unsigned long long, rs2::frame>> in;
-    std::vector<std::tuple<unsigned long long, cv::Mat, long long>> out;
-    void process() override
-    {
-        size_t i = 0;
-        out.resize(in.size());
-#if (VERBOSE > 1)
-        auto start = std::chrono::high_resolution_clock::now();
-#endif
-        while (in.size())
-        {
-            auto tmp_pair = in.front();
-            in.pop_front();
-            rs2::video_frame frame = tmp_pair.second.as<rs2::video_frame>();
-            long long ts = 0;
-            if (frame.supports_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL))
-                ts = frame.get_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL);
-            out.at(i++) = std::make_tuple(tmp_pair.first, cv::Mat(cv::Size(frame.get_width(), frame.get_height()), CV_8UC3, (void*)frame.get_data(), cv::Mat::AUTO_STEP), ts);
-        }
-        this->setTaskStatus(TASK_DONE);
-#if (VERBOSE > 1)
-        std::cout << "(Converter) FrameToColorTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") took " << std::chrono::duration_cast
-                     <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
-#endif
-    }
-};
+//    std::deque<std::pair<unsigned long long, rs2::frame>> in;
+//    std::vector<std::tuple<unsigned long long, cv::Mat, long long>> out;
+//    void process() override
+//    {
+//        size_t i = 0;
+//        out.resize(in.size());
+//#if (VERBOSE > 1)
+//        auto start = std::chrono::high_resolution_clock::now();
+//#endif
+//        while (in.size())
+//        {
+//            auto tmp_pair = in.front();
+//            in.pop_front();
+//            rs2::video_frame frame = tmp_pair.second.as<rs2::video_frame>();
+//            long long ts = 0;
+//            if (frame.supports_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL))
+//                ts = frame.get_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL);
+//            out.at(i++) = std::make_tuple(tmp_pair.first, cv::Mat(cv::Size(frame.get_width(), frame.get_height()), CV_8UC3, (void*)frame.get_data(), cv::Mat::AUTO_STEP), ts);
+//        }
+//        this->setTaskStatus(TASK_DONE);
+//#if (VERBOSE > 1)
+//        std::cout << "(Converter) FrameToColorTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") took " << std::chrono::duration_cast
+//                     <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
+//#endif
+//    }
+//};
 
 class FrameToCloudTask : public BaseTask
 {
 public:
-    FrameToCloudTask(camera_intrinsics_s* intrinsics, camera_extrinsics_s* extrinsics)
+    FrameToCloudTask(int taskId, camera_intrinsics_s* intrinsics, camera_extrinsics_s* extrinsics)
     {
+        this->setTaskId(taskId);
         m_intr = intrinsics;
         m_extr = extrinsics;
+
     }
     virtual ~FrameToCloudTask() override {}
-    std::deque<std::pair<unsigned long long, rs2::frame>> in;
+    std::deque<std::tuple<unsigned long long, cv::Mat, long long>> in;
     std::vector<std::tuple<unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long>> out;
     void process() override
     {
-        size_t i = 0;
-        out.resize(in.size());
 #if (VERBOSE > 1)
         auto start = std::chrono::high_resolution_clock::now();
 #endif
+        size_t i = 0;
+        out.resize(in.size());
+
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_WIDTH_DEPTH, RS_FRAME_HEIGHT_DEPTH));
+
         while (in.size())
         {
-            auto tmp_pair = in.front();
+            auto tmp_t = in.front();
             in.pop_front();
-            rs2::depth_frame frame = tmp_pair.second.as<rs2::depth_frame>();
-            long long ts = 0;
-            if (frame.supports_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL))
-                ts = frame.get_frame_metadata(RS2_FRAME_METADATA_TIME_OF_ARRIVAL);
-            MatToCloudXYZ(cv::Mat(cv::Size(frame.get_width(), frame.get_height()), CV_16UC1, (void*)frame.get_data(),
-                                  cv::Mat::AUTO_STEP), cloud, m_intr, m_extr);
-            out.at(i++) = std::make_tuple(tmp_pair.first, cloud, ts);
+            cv::Mat depth_mat = std::get<1>(tmp_t);
+            MatToCloudXYZ(depth_mat, cloud, m_intr, m_extr);
+            out.at(i++) = std::make_tuple(std::get<0>(tmp_t), cloud, std::get<2>(tmp_t));
         }
         this->setTaskStatus(TASK_DONE);
 #if (VERBOSE > 1)
@@ -233,9 +233,9 @@ private:
     camera_intrinsics_t* m_intr;
     camera_extrinsics_t* m_extr;
 
-    void MatToCloudXYZ(cv::Mat depthMat, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, camera_intrinsics_t* intrinsics, camera_extrinsics_t* extrinsics)
+    void MatToCloudXYZ(cv::Mat& depthMat, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, camera_intrinsics_t* intrinsics, camera_extrinsics_t* extrinsics)
     {
-        size_t point_idx = 0;
+        size_t point_idx = 0, skipped_pts = 0;
         ushort* data_ptr = (ushort*) depthMat.data;
 
         for (int i = 0; i<depthMat.rows; i++)
@@ -261,12 +261,14 @@ private:
                     cloud->points.at(point_idx).x = 0.f;
                     cloud->points.at(point_idx).y = 0.f;
                     cloud->points.at(point_idx).z = 0.f;
+                    skipped_pts++;
                 }
 
                 ++point_idx;
                 ++data_ptr;
             }
         }
+//        std::cout << "DEBUG skipped " << skipped_pts << "(type:" << this->getTaskType() << " id:" << this->getTaskId() << ")" << std::endl;
     }
 
     inline void transformPointToPoint(const float* origin_pt, float* target_pt, const camera_extrinsics_t* extrin)
@@ -362,35 +364,34 @@ private:
 //}
 
 
-class FrameToPointsTask : public BaseTask
-{
-public:
-    FrameToPointsTask();
-    virtual ~FrameToPointsTask() override;
-    std::deque<rs2::frame> in;
-    std::vector<std::tuple <rs2::points, long long, unsigned long long> > out;
-    void process() override;
-};
+//class FrameToPointsTask : public BaseTask
+//{
+//public:
+//    FrameToPointsTask();
+//    virtual ~FrameToPointsTask() override;
+//    std::deque<rs2::frame> in;
+//    std::vector<std::tuple <rs2::points, long long, unsigned long long> > out;
+//    void process() override;
+//};
 
-class PointsToCloudTask : public BaseTask
-{
-public:
-    PointsToCloudTask();
-    virtual ~PointsToCloudTask() override;
-    std::deque< std::tuple <rs2::points, long long, unsigned long long> > in;
-    std::vector< std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, double, unsigned long long> > out;
-    void process() override;
+//class PointsToCloudTask : public BaseTask
+//{
+//public:
+//    PointsToCloudTask();
+//    virtual ~PointsToCloudTask() override;
+//    std::deque< std::tuple <rs2::points, long long, unsigned long long> > in;
+//    std::vector< std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, double, unsigned long long> > out;
+//    void process() override;
 
-private:
-    rs2_extrinsics m_extrinsics_front, m_extrinsics_rear;
-    void points_to_pcl(const rs2::points &points, pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud);
-    void points_to_pcl_rgb(const rs2::points &points, const rs2::video_frame& color, pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcloud);
-    inline void rs2_transform_point_to_point_custom(float* to_point, const struct rs2_extrinsics* extrin, const float* from_point);
-    inline void textureToColor(const rs2::video_frame* rgb_frame, const rs2::texture_coordinate* texture_uv, std::tuple<uint8_t, uint8_t, uint8_t>* output);
-};
+//private:
+//    rs2_extrinsics m_extrinsics_front, m_extrinsics_rear;
+//    void points_to_pcl(const rs2::points &points, pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud);
+//    void points_to_pcl_rgb(const rs2::points &points, const rs2::video_frame& color, pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcloud);
+//    inline void rs2_transform_point_to_point_custom(float* to_point, const struct rs2_extrinsics* extrin, const float* from_point);
+//    inline void textureToColor(const rs2::video_frame* rgb_frame, const rs2::texture_coordinate* texture_uv, std::tuple<uint8_t, uint8_t, uint8_t>* output);
+//};
 
-#define CONV_FRAMES_TO_POINTS_TASKS 3
-#define CONV_POINTS_TO_CLOUD_TASKS 3
+
 
 class Rs2_PCL_Converter : ThreadController
 {
@@ -407,11 +408,9 @@ private:
     std::vector<MatQueue*>* m_ref_out_depth;
     std::vector<MatQueue*>* m_ref_out_color;
 
+    // todo: camtype + extrinsics can be simplyfied
     std::vector<CameraType_t> m_cam_types;
     std::vector<camera_extrinsics_t> m_extrinsics;
-
-    std::vector<FrameToPointsTask*> m_tasks_f2p;
-    std::vector<PointsToCloudTask*> m_tasks_p2c;
 
     std::vector<shared_references_t> m_refs_conv_to_PCL;
 
@@ -420,6 +419,20 @@ private:
     std::thread m_converter_thread;
 
     void converter_thread_func();
+
+    float* copyMatPtrFloat(const cv::Mat& src)
+    {
+        float* M_ptr = new float[src.total()];
+        std::memcpy(M_ptr, src.data, src.rows*src.step);
+        return M_ptr;
+    }
+//    void* copyMatDataPtr(cv::Mat& src)
+//    {
+//        void* M_ptr = operator new(src.total());
+//        std::memcpy(M_ptr, src.data, src.rows*src.step);
+//        return M_ptr;
+//    }
+
 
 public:
     Rs2_PCL_Converter(DeviceInterface* in_interface_ref, ProcessingInterface* out_interface_ref, std::vector<CameraType_t> camera_types );

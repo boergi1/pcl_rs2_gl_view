@@ -21,7 +21,7 @@
 
 #define RS_MASTER_SLAVE_CONF_ENABLED 1
 #define RS_DEPTH_ENABLED 1
-#define RS_COLOR_ENABLED 1
+#define RS_COLOR_ENABLED 0
 #define RS_EMITTER_ENABLED 1.f
 #define RS_EMITTER_POWER 1.f
 
@@ -53,20 +53,20 @@
 #endif
 
 // Converter
-#define CONV_RS_ROTATION_AXIS "y" // todo: init t matrix in converter constructor
+//#define CONV_RS_ROTATION_AXIS "y" // todo: init t matrix in converter constructor
 #define CONV_RS_ROTATION_AXES "yxz"
 
 #define TRAN_FRONT_TO_CENTRAL_X_M 0.0
 #define TRAN_FRONT_TO_CENTRAL_Y_M -0.020
 #define TRAN_FRONT_TO_CENTRAL_Z_M -0.010
-#define ROT_FRONT_TO_CENTRAL_ANG_X -90.0
-#define ROT_FRONT_TO_CENTRAL_ANG_Y 0.0
+#define ROT_FRONT_TO_CENTRAL_ANG_X 0.0
+#define ROT_FRONT_TO_CENTRAL_ANG_Y -90.0
 #define ROT_FRONT_TO_CENTRAL_ANG_Z 0.0
 #define TRAN_REAR_TO_CENTRAL_X_M 0.0
 #define TRAN_REAR_TO_CENTRAL_Y_M 0.020
 #define TRAN_REAR_TO_CENTRAL_Z_M -0.010
-#define ROT_REAR_TO_CENTRAL_ANG_X 90.0
-#define ROT_REAR_TO_CENTRAL_ANG_Y 0.0
+#define ROT_REAR_TO_CENTRAL_ANG_X 0.0
+#define ROT_REAR_TO_CENTRAL_ANG_Y 90.0
 #define ROT_REAR_TO_CENTRAL_ANG_Z 0.0
 
 #define CONV_THREAD_POOL_SIZE 7
@@ -116,7 +116,7 @@
 #define CV_REF_SIZE_MM 26
 
 // Toggle viewers
-#define PCL_VIEWER 0
+#define PCL_VIEWER 1
 #define IMSHOW_CV 1
 
 #define GL_DRAW_POINTCLOUD 0

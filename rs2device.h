@@ -29,6 +29,84 @@ public:
     FrameQueue(CameraType_t CameraType, std::string name){
         m_camtype = CameraType;
         m_name = name;
+
+//        // Calculate extrinsic camera parameters
+//        cv::Mat R_identity = cv::Mat::eye(3,3, CV_32F);
+//        cv::Mat T_zero = cv::Mat::zeros(3,1,CV_32F);
+//        float rot_x, rot_y, rot_z, tran_x, tran_y, tran_z;
+//        switch (m_camtype) {
+//        case CameraType_t::CENTRAL:
+//        {
+//            // No transformation
+//            m_extrinsics = camera_extrinsics_t((float*)R_identity.data, (float*)T_zero.data);
+//            return;
+//        }
+//        case CameraType_t::FRONT:
+//        {
+//            rot_x = static_cast<float>(degreesToRadians(ROT_FRONT_TO_CENTRAL_ANG_X));
+//            rot_y = static_cast<float>(degreesToRadians(ROT_FRONT_TO_CENTRAL_ANG_Y));
+//            rot_z = static_cast<float>(degreesToRadians(ROT_FRONT_TO_CENTRAL_ANG_Z));
+//            tran_x = static_cast<float>(TRAN_FRONT_TO_CENTRAL_X_M);
+//            tran_y = static_cast<float>(TRAN_FRONT_TO_CENTRAL_Y_M);
+//            tran_z = static_cast<float>(TRAN_FRONT_TO_CENTRAL_Z_M);
+//            break;
+//        }
+//        case CameraType_t::REAR:
+//        {
+//            rot_x = static_cast<float>(degreesToRadians(ROT_REAR_TO_CENTRAL_ANG_X));
+//            rot_y = static_cast<float>(degreesToRadians(ROT_REAR_TO_CENTRAL_ANG_Y));
+//            rot_z = static_cast<float>(degreesToRadians(ROT_REAR_TO_CENTRAL_ANG_Z));
+//            tran_x = static_cast<float>(TRAN_REAR_TO_CENTRAL_X_M);
+//            tran_y = static_cast<float>(TRAN_REAR_TO_CENTRAL_Y_M);
+//            tran_z = static_cast<float>(TRAN_REAR_TO_CENTRAL_Z_M);
+//            break;
+//        }
+//        default:
+//        {
+//            std::cerr << "(Converter) Extrinsics for camera type " << m_camtype << " not defined" << std::endl;
+//            m_extrinsics = camera_extrinsics_t((float*)R_identity.data, (float*)T_zero.data);
+//            return;
+//        }
+//        }
+
+//        cv::Mat R_x = (cv::Mat_<float>(3,3) <<
+//                       1, 0, 0,
+//                       0, std::cos(rot_x), -std::sin(rot_x),
+//                       0, std::sin(rot_x), std::cos(rot_x));
+//        cv::Mat R_y = (cv::Mat_<float>(3,3) <<
+//                       std::cos(rot_y), 0, std::sin(rot_y),
+//                       0, 1, 0,
+//                       -std::sin(rot_y), 0, std::cos(rot_y));
+//        cv::Mat R_z = (cv::Mat_<float>(3,3) <<
+//                       std::cos(rot_z), -std::sin(rot_z), 0,
+//                       std::sin(rot_z), std::cos(rot_z), 0,
+//                       0, 0, 1);
+//        cv::Mat R = (cv::Mat_<float>(3,3));
+//        cv::Mat T = (cv::Mat_<float>(3,1) << tran_x, tran_y, tran_z);
+
+//        if (CONV_RS_ROTATION_AXES == "xyz")
+//            R = R_z * R_y * R_x;
+//        else if (CONV_RS_ROTATION_AXES == "xzy")
+//            R = R_y * R_z * R_x;
+//        else if (CONV_RS_ROTATION_AXES == "yxz")
+//            R = R_z * R_x * R_y;
+//        else if (CONV_RS_ROTATION_AXES == "yzx")
+//            R = R_x * R_z * R_y;
+//        else if (CONV_RS_ROTATION_AXES == "zxy")
+//            R = R_y * R_x * R_z;
+//        else if (CONV_RS_ROTATION_AXES == "zyx")
+//            R = R_x * R_y * R_z;
+//        else {
+//            std::cerr << "(Converter) Invalid rotation axis specified" << std::endl;
+//            m_extrinsics = camera_extrinsics_t((float*)R_identity.data, (float*)T_zero.data);
+//            return;
+//        }
+//        m_extrinsics = camera_extrinsics_t((float*)R.data, (float*)T.data);
+
+//        std::cerr << std::endl << "DEBUG Extrinsics FRAMEQUEUE" << std::endl
+//                  << m_extrinsics.R[0] << " " << m_extrinsics.R[1] << " " << m_extrinsics.R[2] << " | " << m_extrinsics.T[0] << std::endl
+//                  << m_extrinsics.R[3] << " " << m_extrinsics.R[4] << " " << m_extrinsics.R[5] << " | " << m_extrinsics.T[1] << std::endl
+//                  << m_extrinsics.R[6] << " " << m_extrinsics.R[7] << " " << m_extrinsics.R[8] << " | " << m_extrinsics.T[2] <<  std::endl << std::endl;
     }
 
     void addFrame(rs2::frame frame)
@@ -74,6 +152,7 @@ public:
     }
     void setIntrinsics(camera_intrinsics_t intr) { m_intrinsics = intr; }
     camera_intrinsics_s* getIntrinsics() { return &m_intrinsics; }
+    camera_extrinsics_s* getExtrinsics() { return &m_extrinsics; }
     bool isEmpty() { return m_fqueue.size() == 0; }
     bool size() { return m_fqueue.size(); }
     CameraType_t getCameraType() { return m_camtype; }
@@ -82,6 +161,7 @@ private:
     std::mutex m_mtx;
     CameraType_t m_camtype;
     camera_intrinsics_t m_intrinsics;
+    camera_extrinsics_t m_extrinsics;
 };
 
 class Rs2Device

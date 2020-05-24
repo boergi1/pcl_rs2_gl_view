@@ -51,14 +51,14 @@ class CloudQueue
 {
 public:
     CloudQueue(CameraType_t CameraType, std::string name = "");
-    void addCloudT(std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> cloud_tuple);
+    void addCloudT(std::tuple <unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long> cloud_tuple);
     // <std::tuple<unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long>>
-    std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> getCloudT();
-    const std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> readCloudT();
+    std::tuple <unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long> getCloudT();
+    const std::tuple <unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long> readCloudT();
     bool isEmpty();
     CameraType_t getCameraType();
 private:
-    std::deque<std::tuple <pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long>>  m_cqueue;
+    std::deque<std::tuple <unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long>>  m_cqueue;
     std::mutex m_mtx;
     CameraType_t m_camtype;
     std::string m_name;

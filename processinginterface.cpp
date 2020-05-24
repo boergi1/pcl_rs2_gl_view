@@ -7,9 +7,9 @@ ProcessingInterface::ProcessingInterface(std::vector<CameraType_t> device_types)
 {
     for (auto& camtype : device_types)
     {
-#if PROC_PIPE_PC_ENABLED
+        //#if PROC_PIPE_PC_ENABLED
         m_input_clouds.push_back(new CloudQueue(camtype));
-#endif
+        //#endif
 #if PROC_PIPE_MAT_ENABLED
         m_input_depth.push_back(new MatQueue(camtype, "depth"));
 #if RS_COLOR_ENABLED
@@ -166,7 +166,7 @@ void ProcessingInterface::pc_proc_thread_func()
         cv::waitKey(1);
 #endif
 
-#if PROC_PIPE_PC_ENABLED
+
         for (size_t i = 0; i < m_input_clouds.size(); i++)
         {
             auto cloudqueue = m_input_clouds.at(i);
@@ -175,118 +175,163 @@ void ProcessingInterface::pc_proc_thread_func()
                 idle = false;
                 auto camType = cloudqueue->getCameraType();
                 auto cloudt = cloudqueue->getCloudT();
-                pointcloud = std::get<0>(cloudt);
+                pointcloud = std::get<1>(cloudt);
                 auto ts = std::get<1>(cloudt);
                 auto ctr = std::get<2>(cloudt);
 #if (VERBOSE > 0)
                 std::cout << "(ProcessingInterface) PointCloud received from camera " << camType << " (" << ctr << "), organized: " << pointcloud->isOrganized()
                           << " size: " << pointcloud->points.size() << std::endl;
 #endif
-                /*
-                 *
-                 *
-                 *
-                 */
-                // 1. pcl::PassThrough() +y = conveyor dir, z+ = conveyor dist, x = conveyor width
-#if PCL_FILTER_GLOBAL_REGION_ENABLED
-                if ((true)) // 32 - 35 ms (3xtotal)
-                {
-                    boxFilter.setInputCloud(pointcloud);
-                    boxFilter.filter(*pc_global_extr);
-                }
-                if ((false))
-                {
-                    conditionalRemoval.setInputCloud(pointcloud);
-                    conditionalRemoval.setCondition (range_cond);
-                    conditionalRemoval.filter(*pc_global_extr);
-                }
-                std::cout << "(ProcessingInterface) DEBUG after region camera " << camType << " size: " << pc_global_extr->points.size() << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
-                             (std::chrono::high_resolution_clock::now()-proc_start).count() << " ms" << std::endl;
-#endif
-                // 2. remove planar surface
-                /* without axis: > 2s (3xtotal)
-                 * with axis: > 200ms
-                 *
-                 *
-                 */
-#if PCL_FILTER_PLANE_ENABLED
-#if !PCL_FILTER_GLOBAL_REGION_ENABLED
-                seg.setInputCloud (pointcloud);
-#else
-                seg.setInputCloud (pc_global_extr);
-#endif
-                seg.setDistanceThreshold(PCL_FILTER_PLANE_THRES);
-                seg.setAxis(seg_vertical_axis);
-                seg.setEpsAngle(pcl::deg2rad(PCL_FILTER_PLANE_TOL_ANGLE));
-                // coeff contains the coefficients of the plane:
-                // ax + by + cz + d = 0
-                seg.segment (*inliers, *coefficients);
-                if (inliers->indices.size() == 0)
-                    PCL_ERROR ("Could not estimate a planar model for the given dataset.");
 
-                std::cout << "(ProcessingInterface) DEBUG after planar segmentation camera " << camType << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
-                             (std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
-
-                // Remove found surface -> 25ms
-
-                //#if PCL_FILTER_GLOBAL_REGION_ENABLED
-                //                extract.setInputCloud (pc_global_extr);
-                //#else
-                //                extract.setInputCloud (pointcloud);
-                //#endif
-                extract.setInputCloud (seg.getInputCloud());
-                extract.setIndices (inliers);
-                extract.setNegative (true);
-                extract.filter(*pc_plane_extr);
-#if (VERBOSE > 1)
-                std::cout << "Model data size: " << pc_global_extr->size() << std::endl;
-                std::cout << "Model coefficients: " << coefficients->values[0] << " "
-                          << coefficients->values[1] << " "
-                          << coefficients->values[2] << " "
-                          << coefficients->values[3] << std::endl;
-                std::cout << "Model inliers: " << inliers->indices.size() << std::endl;
-#endif
-
-                std::cout << "(ProcessingInterface) DEBUG after planar extraction camera " << camType << " size: " << pc_plane_extr->points.size() << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
-                             (std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
-
-
-#endif
-
-
-                // 3. region growing / euclidean clusters
-                // 4. Iterative Closest Point (registration or recognition) // correspondence grouping
-
-
-#if (PCL_VIEWER == 1)
+#if PCL_VIEWER
                 m_viewer_mtx.lock();
-#if PCL_FILTER_PLANE_ENABLED
-                m_viewer_clouds.at(i) = pc_plane_extr;
-#elif PCL_FILTER_GLOBAL_REGION_ENABLED
-                m_viewer_clouds.at(i) = pc_global_extr;
-#else
+
                 m_viewer_clouds.at(i) = pointcloud;
-#endif
+
                 m_viewer_mtx.unlock();
 #endif
-                //                if (savepcd)
-                //                {
-                //                    if (camType == CameraType_t::CENTRAL)
-                //                    {
-                //                        savepcd = false;
-                //                        pcl::io::savePCDFile<pcl::PointXYZ>("/home/boergi/mypcd_orig.pcd", *pointcloud);
-                //                        pcl::io::savePCDFile<pcl::PointXYZ>("/home/boergi/mypcd_fil.pcd", *pc_plane_extr);
-                //                        std::cerr << "SAVED" << std::endl;
-                //                    }
-                //                }
-                /*
-                 *
-                 *
-                 *
-                 */
+
             }
         }
-#endif
+
+
+
+
+
+
+
+        //#if PROC_PIPE_PC_ENABLED
+        //        for (size_t i = 0; i < m_input_clouds.size(); i++)
+        //        {
+        //            auto cloudqueue = m_input_clouds.at(i);
+        //            if ( !cloudqueue->isEmpty() )
+        //            {
+        //                idle = false;
+        //                auto camType = cloudqueue->getCameraType();
+        //                auto cloudt = cloudqueue->getCloudT();
+        //                pointcloud = std::get<0>(cloudt);
+        //                auto ts = std::get<1>(cloudt);
+        //                auto ctr = std::get<2>(cloudt);
+        //#if (VERBOSE > 0)
+        //                std::cout << "(ProcessingInterface) PointCloud received from camera " << camType << " (" << ctr << "), organized: " << pointcloud->isOrganized()
+        //                          << " size: " << pointcloud->points.size() << std::endl;
+        //#endif
+        //                /*
+        //                 *
+        //                 *
+        //                 *
+        //                 */
+        //                // 1. pcl::PassThrough() +y = conveyor dir, z+ = conveyor dist, x = conveyor width
+        //#if PCL_FILTER_GLOBAL_REGION_ENABLED
+        //                if ((true)) // 32 - 35 ms (3xtotal)
+        //                {
+        //                    boxFilter.setInputCloud(pointcloud);
+        //                    boxFilter.filter(*pc_global_extr);
+        //                }
+        //                if ((false))
+        //                {
+        //                    conditionalRemoval.setInputCloud(pointcloud);
+        //                    conditionalRemoval.setCondition (range_cond);
+        //                    conditionalRemoval.filter(*pc_global_extr);
+        //                }
+        //                std::cout << "(ProcessingInterface) DEBUG after region camera " << camType << " size: " << pc_global_extr->points.size() << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
+        //                             (std::chrono::high_resolution_clock::now()-proc_start).count() << " ms" << std::endl;
+        //#endif
+        //                // 2. remove planar surface
+        //                /* without axis: > 2s (3xtotal)
+        //                 * with axis: > 200ms
+        //                 *
+        //                 *
+        //                 */
+        //#if PCL_FILTER_PLANE_ENABLED
+        //#if !PCL_FILTER_GLOBAL_REGION_ENABLED
+        //                seg.setInputCloud (pointcloud);
+        //#else
+        //                seg.setInputCloud (pc_global_extr);
+        //#endif
+        //                seg.setDistanceThreshold(PCL_FILTER_PLANE_THRES);
+        //                seg.setAxis(seg_vertical_axis);
+        //                seg.setEpsAngle(pcl::deg2rad(PCL_FILTER_PLANE_TOL_ANGLE));
+        //                // coeff contains the coefficients of the plane:
+        //                // ax + by + cz + d = 0
+        //                seg.segment (*inliers, *coefficients);
+        //                if (inliers->indices.size() == 0)
+        //                    PCL_ERROR ("Could not estimate a planar model for the given dataset.");
+
+        //                std::cout << "(ProcessingInterface) DEBUG after planar segmentation camera " << camType << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
+        //                             (std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
+
+        //                // Remove found surface -> 25ms
+
+        //                //#if PCL_FILTER_GLOBAL_REGION_ENABLED
+        //                //                extract.setInputCloud (pc_global_extr);
+        //                //#else
+        //                //                extract.setInputCloud (pointcloud);
+        //                //#endif
+        //                extract.setInputCloud (seg.getInputCloud());
+        //                extract.setIndices (inliers);
+        //                extract.setNegative (true);
+        //                extract.filter(*pc_plane_extr);
+        //#if (VERBOSE > 1)
+        //                std::cout << "Model data size: " << pc_global_extr->size() << std::endl;
+        //                std::cout << "Model coefficients: " << coefficients->values[0] << " "
+        //                          << coefficients->values[1] << " "
+        //                          << coefficients->values[2] << " "
+        //                          << coefficients->values[3] << std::endl;
+        //                std::cout << "Model inliers: " << inliers->indices.size() << std::endl;
+        //#endif
+
+        //                std::cout << "(ProcessingInterface) DEBUG after planar extraction camera " << camType << " size: " << pc_plane_extr->points.size() << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>
+        //                             (std::chrono::high_resolution_clock::now()-pcl_proc_start).count() << " ms" << std::endl;
+
+
+        //#endif
+
+
+        //                // 3. region growing / euclidean clusters
+        //                // 4. Iterative Closest Point (registration or recognition) // correspondence grouping
+
+
+        //#if (PCL_VIEWER == 1)
+        //                m_viewer_mtx.lock();
+        //#if PCL_FILTER_PLANE_ENABLED
+        //                m_viewer_clouds.at(i) = pc_plane_extr;
+        //#elif PCL_FILTER_GLOBAL_REGION_ENABLED
+        //                m_viewer_clouds.at(i) = pc_global_extr;
+        //#else
+        //                m_viewer_clouds.at(i) = pointcloud;
+        //#endif
+        //                m_viewer_mtx.unlock();
+        //#endif
+        //                //                if (savepcd)
+        //                //                {
+        //                //                    if (camType == CameraType_t::CENTRAL)
+        //                //                    {
+        //                //                        savepcd = false;
+        //                //                        pcl::io::savePCDFile<pcl::PointXYZ>("/home/boergi/mypcd_orig.pcd", *pointcloud);
+        //                //                        pcl::io::savePCDFile<pcl::PointXYZ>("/home/boergi/mypcd_fil.pcd", *pc_plane_extr);
+        //                //                        std::cerr << "SAVED" << std::endl;
+        //                //                    }
+        //                //                }
+        //                /*
+        //                 *
+        //                 *
+        //                 *
+        //                 */
+        //            }
+        //        }
+        //#endif
+
+
+
+
+
+
+
+
+
+
+
 
         if (idle)
         {
@@ -356,7 +401,7 @@ CloudQueue::CloudQueue(CameraType_t CameraType, std::string name){
     m_name = name;
 }
 
-void CloudQueue::addCloudT(std::tuple<pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> cloud_tuple)
+void CloudQueue::addCloudT(std::tuple<unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long> cloud_tuple)
 {
     m_mtx.lock();
     m_cqueue.push_back(cloud_tuple);
@@ -368,7 +413,7 @@ void CloudQueue::addCloudT(std::tuple<pcl::PointCloud<pcl::PointXYZ>::Ptr, long 
     m_mtx.unlock();
 }
 
-std::tuple<pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> CloudQueue::getCloudT()
+std::tuple<unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long> CloudQueue::getCloudT()
 {
     if (m_cqueue.size())
     {
@@ -386,7 +431,7 @@ std::tuple<pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> C
     }
 }
 
-const std::tuple<pcl::PointCloud<pcl::PointXYZ>::Ptr, long long, unsigned long long> CloudQueue::readCloudT()
+const std::tuple<unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long> CloudQueue::readCloudT()
 {
     if (m_cqueue.size())
     {

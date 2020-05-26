@@ -26,10 +26,8 @@ Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, Processi
     const cv::Mat T_zero = cv::Mat::zeros(3,1,CV_32F);
     float rot_x, rot_y, rot_z, tran_x, tran_y, tran_z;
 
-
     for (size_t i=0; i<m_cam_types.size(); i++)
     {
-        float *R_ptr, *T_ptr;
         switch (m_cam_types.at(i)) {
         case CameraType_t::CENTRAL:
         {
@@ -94,17 +92,9 @@ Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, Processi
             R = R_x * R_y * R_z;
         else {
             std::cerr << "(Converter) Invalid rotation axis specified" << std::endl;
-
-
             m_extrinsics.push_back(camera_extrinsics_t(copyMatPtrFloat(R_identity), copyMatPtrFloat(T_zero)));
             continue;
         }
-
-        //        R_ptr = new float[R.total()];
-        //        std::memcpy(R_ptr, R.data, R.rows*R.step);
-        //        T_ptr = new float[T.total()];
-        //        std::memcpy(T_ptr, T.data, T.rows*T.step);
-        //        m_extrinsics.push_back(camera_extrinsics_t(R_ptr, T_ptr));
         m_extrinsics.push_back(camera_extrinsics_t(copyMatPtrFloat(R), copyMatPtrFloat(T)));
     }
 

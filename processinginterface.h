@@ -126,6 +126,51 @@ private:
     std::string m_name;
 };
 
+class TrackedObject
+{
+public:
+    TrackedObject(int ID)
+    {
+        _ID = ID;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr objectCloud (new pcl::PointCloud<pcl::PointXYZ>());
+        _objectCloud = objectCloud;
+    }
+
+    void addPoint(pcl::PointXYZ point) { _objectCloud->push_back(point); }
+
+    void addOrganizedPoint(pcl::PointXYZ point, int index_X, int index_Y )
+    {
+        _objectCloud->push_back(point);
+        _pointIndices.push_back(std::make_pair(index_X, index_Y));
+    }
+
+    pcl::PointXYZ* getPoint () { return &_objectCloud->points.back(); }
+    pcl::PointXYZ* getOrganizedPoint (int index_X, int index_Y)
+    {
+        auto pointSize = _pointIndices.size();
+        for (size_t i = 0; i < pointSize; i++) {
+            if ( index_X == _pointIndices.at(i).first && index_Y == _pointIndices.at(i).second )
+            {
+                return &_objectCloud->at(index_X, index_Y);
+            }
+        }
+        return nullptr;
+    }
+
+    pcl::PointXYZ* getPointByIndex (int index) { return &_objectCloud->points.at(index); }
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr getCloud() { return _objectCloud; }
+    int getID() { return _ID; }
+    /* todo: add cloud and group to existing cloud,
+     * calculate center of unorganized cloud
+        OR do this with organized cloud */
+private:
+    pcl::PointCloud<pcl::PointXYZ>::Ptr _objectCloud;
+    std::vector< std::pair<int,int> > _pointIndices;
+    //   pcl::PointCloud<pcl::PointXYZ>::Ptr _objectCloud (new pcl::PointCloud<pcl::PointXYZ>);
+    int _ID;
+};
+
 class ProcessingInterface // todo: add one thread for each camera
 {
 private:
@@ -155,6 +200,117 @@ public:
     std::vector<CloudQueue *>* getInputCloudsRef() { return &m_input_clouds; }
     std::vector<MatQueue *>* getDepthImageRef() { return &m_input_depth; }
     std::vector<MatQueue *>* getColorImageRef() { return &m_input_color; }
+
+
+    //                            cv::Mat centroidDistances(std::vector<tracked_object_t> *obj_centr, tracked_object_t *inp_centr, size_t size_in)
+    //                            {
+    //                                size_t size_obj = obj_centr->size();
+    //                                cv::Mat result = cv::Mat::zeros(static_cast<int>(size_obj), static_cast<int>(size_in), CV_64F);
+    //                                for (size_t i = 0; i < size_obj; i++)
+    //                                {
+    //                                    double x_o = obj_centr->at(i).cx;
+    //                                    double y_o = obj_centr->at(i).cy;
+    //                                    for (size_t j = 0; j < size_in; ++j)
+    //                                    {
+    //                                        double dx = inp_centr[j].cx - x_o;
+    //                                        double dy = inp_centr[j].cy - y_o;
+    //                                        result.at<double>(static_cast<int>(i), static_cast<int>(j)) = std::sqrt(dx * dx + dy * dy);
+    //                                    }
+    //                                }
+    //                                return result;
+    //                            }
+
+    float euclideanDistance3D(pcl::PointXYZ* point_1, pcl::PointXYZ* point_2)
+    {
+        float dx = point_2->x - point_1->x;
+        float dy = point_2->y - point_1->y;
+        float dz = point_2->z - point_1->z;
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    std::vector<TrackedObject*> euclideanConnectedComponentsOrganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float distanceThreshold)
+    {
+        std::vector<TrackedObject*> objectClouds;
+
+        auto width = cloud->width;
+        auto height = cloud->height;
+        uint16_t cluster_id = 1;
+
+        cv::Mat labels = cv::Mat::zeros(height, width, CV_16UC1);
+
+        pcl::PointXYZ tmp_point;
+        //        // First pixel
+        //        tmp_point = cloud->at(0,0);
+        //        if (tmp_point.z > 0)
+        //        {
+        //            objectClouds.push_back(new TrackedObject(cluster_id++));
+        //            objectClouds.back()->addPoint(tmp_point);
+        //        }
+
+
+
+
+        for (size_t row = 0; row < height; row++)
+        {
+            for (size_t col = 0; col < width; col++)
+            {
+                tmp_point = cloud->at(col,row);
+
+                if (tmp_point.z > 0)
+                {
+                    if (row == 0)
+                    {
+                        if (col == 0)
+                        {
+                            // First pixel
+                            objectClouds.push_back(new TrackedObject(cluster_id));
+                            objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
+                            labels.at<uint16_t>(row, col) = cluster_id;
+                            cluster_id++;
+                            continue;
+                        }
+                        // First row
+                        if ( distanceThreshold > euclideanDistance3D(objectClouds.back()->getPoint(), &tmp_point) )
+                        {
+                            objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
+                        }
+                        else
+                        {
+                            objectClouds.push_back(new TrackedObject(cluster_id));
+                            objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
+                            labels.at<uint16_t>(row, col) = cluster_id;
+                            cluster_id++;
+                        }
+                    }
+                    else if (row == height-1)
+                    {
+                        // Last row
+                    }
+                    else
+                    {
+                        // Mid part
+                        // compare upper and left
+                        if ( !col )
+                        {
+
+                        }
+                        else
+                        {
+
+                        }
+                    }
+
+                }
+
+            }
+        }
+        std::cout << std::endl << "euclideanConnectedComponentsOrganized" << std::endl << labels << std::endl << std::endl;
+    }
+
+    void euclideanConnectedComponentsUnorganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::vector<TrackedObject> *objects)
+    {
+
+    }
 
 #if PCL_VIEWER
     std::function<void (pcl::visualization::PCLVisualizer&)> viewer_callback = [](pcl::visualization::PCLVisualizer& viewer)

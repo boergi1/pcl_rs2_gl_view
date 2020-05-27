@@ -366,7 +366,9 @@ void Rs2_PCL_Converter::converter_thread_func()
         }
         if (idle)
         {
+#if VERBOSE
             std::cerr << "(Converter) Idle" << std::endl;
+#endif
             std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_CONV_POLL_NS));
         }
     }

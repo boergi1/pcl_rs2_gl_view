@@ -242,7 +242,7 @@ private:
         {
             for (int j = 0; j < depthMat.cols; j++)
             {
-                float z = static_cast<ushort>(*data_ptr) * 0.001;
+                float z = static_cast<ushort>(*data_ptr) * 0.001; // segfault
                 // z = 0.001 * z;
                 if (z > 0.f)
                 {

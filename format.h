@@ -7,7 +7,7 @@
 #define PROC_PIPE_PC_ENABLED 0
 #define PROC_PIPE_MAT_ENABLED 1
 // Verbosity level
-#define VERBOSE 2
+#define VERBOSE 0
 // Makros
 #define degreesToRadians(angleDegrees) ((angleDegrees) * M_PI / 180.0)
 #define radiansToDegrees(angleRadians) ((angleRadians) * 180.0 / M_PI)

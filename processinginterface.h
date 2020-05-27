@@ -78,7 +78,9 @@ public:
         m_mqueue.push_back(mat_tuple);
         if (m_mqueue.size() > QUE_SIZE_PCL)
         {
+#if VERBOSE
             std::cerr << "(MatQueue) Too many Mats in queue " << m_name << " " << m_camtype << std::endl;
+#endif
             m_mqueue.pop_front();
         }
         m_mtx.unlock();
@@ -147,11 +149,16 @@ public:
     pcl::PointXYZ* getPoint () { return &_objectCloud->points.back(); }
     pcl::PointXYZ* getOrganizedPoint (int index_X, int index_Y)
     {
+        static double overall_duration = 0;
+        auto start = std::chrono::high_resolution_clock::now();
         auto pointSize = _pointIndices.size();
         for (size_t i = 0; i < pointSize; i++) {
             if ( index_X == _pointIndices.at(i).first && index_Y == _pointIndices.at(i).second )
             {
-                return &_objectCloud->at(index_X, index_Y);
+                auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()-start).count();
+                overall_duration = overall_duration + duration;
+                std::cout << "DEBUG getOrganizedPoint took: " << duration/1e6 << " ms, TOTAL " << overall_duration/1e6 << std::endl;
+                return &_objectCloud->at(i);
             }
         }
         return nullptr;
@@ -228,84 +235,280 @@ public:
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
-    std::vector<TrackedObject*> euclideanConnectedComponentsOrganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float distanceThreshold)
+    std::vector<TrackedObject*> euclideanConnectedComponentsOrganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float radiusThreshold, float distanceThreshold)
     {
+        auto start = std::chrono::high_resolution_clock::now();
+
         std::vector<TrackedObject*> objectClouds;
 
-        auto width = cloud->width;
-        auto height = cloud->height;
+
         uint16_t cluster_id = 1;
 
-        cv::Mat labels = cv::Mat::zeros(height, width, CV_16UC1);
+        //  cv::Mat labels = cv::Mat(height, width, CV_32SC1, cv::Scalar(-1)); // 32bit signed
+        cv::Mat labels = cv::Mat::zeros(cloud->height, cloud->width, CV_16UC1);
 
         pcl::PointXYZ tmp_point;
-        //        // First pixel
-        //        tmp_point = cloud->at(0,0);
-        //        if (tmp_point.z > 0)
-        //        {
-        //            objectClouds.push_back(new TrackedObject(cluster_id++));
-        //            objectClouds.back()->addPoint(tmp_point);
-        //        }
 
+        int outOfRange = 0;
 
+        std::cout << "euclideanConnectedComponentsOrganized " << labels.rows << "x" << labels.cols <<  std::endl;
 
-
-        for (size_t row = 0; row < height; row++)
+        for (int row = 0; row < labels.rows; row++)
         {
-            for (size_t col = 0; col < width; col++)
+            for (int col = 0; col < labels.cols; col++)
             {
                 tmp_point = cloud->at(col,row);
 
-                if (tmp_point.z > 0)
+                // Check for valid point
+                 if ((tmp_point.z > 0) && (tmp_point.z < distanceThreshold))
+              //  if (tmp_point.z > 0)
                 {
-                    if (row == 0)
+                    int upper_row = row - 1;
+                    int left_col = col - 1;
+                    bool new_object = false;
+                    TrackedObject* neighborObject = nullptr;
+                    pcl::PointXYZ* neighbor_point_ptr = nullptr;
+
+                    if (upper_row < 0)
                     {
-                        if (col == 0)
+                        // First pixel
+                        if (left_col < 0)
                         {
-                            // First pixel
-                            objectClouds.push_back(new TrackedObject(cluster_id));
-                            objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
-                            labels.at<uint16_t>(row, col) = cluster_id;
-                            cluster_id++;
-                            continue;
-                        }
-                        // First row
-                        if ( distanceThreshold > euclideanDistance3D(objectClouds.back()->getPoint(), &tmp_point) )
-                        {
-                            objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
+                            new_object = true;
                         }
                         else
                         {
-                            objectClouds.push_back(new TrackedObject(cluster_id));
-                            objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
-                            labels.at<uint16_t>(row, col) = cluster_id;
-                            cluster_id++;
+                            uint16_t neighbor_label = labels.at<uint16_t>(row, left_col);
+                            // First row - check left neighbor
+                            if (neighbor_label > 0)
+                            {
+                             //   std::cout << "DEBUG found neighbor LEFT (first row) " << row << " " << left_col << std::endl;
+                                neighborObject = objectClouds.at(neighbor_label-1);
+                                neighbor_point_ptr = neighborObject->getOrganizedPoint(left_col, row);//(row, left_col);
+                            }
+                            else
+                                new_object = true;
                         }
                     }
-                    else if (row == height-1)
+                    else if (left_col < 0)
                     {
-                        // Last row
+                        // First column - check upper neighbor
+                        uint16_t neighbor_label = labels.at<uint16_t>(upper_row, col);
+                        if (neighbor_label > 0)
+                        {
+                        //    std::cout << "DEBUG found neighbor UPPER (first column) " << upper_row << " " << col << std::endl;
+                            neighborObject = objectClouds.at(neighbor_label-1);
+                            neighbor_point_ptr = neighborObject->getOrganizedPoint(col, upper_row);//(upper_row, col);
+                        }
+                        else
+                            new_object = true;
                     }
                     else
                     {
-                        // Mid part
-                        // compare upper and left
-                        if ( !col )
+                        // Rest - check upper first, then left
+                        uint16_t neighbor_label_up = labels.at<uint16_t>(upper_row, col);
+                        if (neighbor_label_up > 0)
                         {
-
+                         //   std::cout << "DEBUG found neighbor UPPER (body) " << upper_row << " " << col << std::endl;
+                            neighborObject = objectClouds.at(neighbor_label_up-1);
+                            neighbor_point_ptr = neighborObject->getOrganizedPoint(col, upper_row);//(upper_row, col);
                         }
                         else
                         {
-
+                            uint16_t neighbor_label_left = labels.at<uint16_t>(row, left_col);
+                            if (neighbor_label_left > 0)
+                            {
+                            //    std::cout << "DEBUG found neighbor LEFT (body) " << row << " " << left_col << std::endl;
+                                neighborObject = objectClouds.at(neighbor_label_left-1);
+                                neighbor_point_ptr = neighborObject->getOrganizedPoint(left_col, row);//(row, left_col);
+                            }
+                            else
+                                new_object = true;
                         }
                     }
 
-                }
 
+                    if (new_object)
+                    {
+                        // Add new object
+                        objectClouds.push_back(new TrackedObject(cluster_id));
+                        objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
+                        labels.at<uint16_t>(row, col) = cluster_id;
+                    //    std::cout << "DEBUG added NEW object with point: [" << labels.at<uint16_t>(row, col) << "] " << row << " " << col << " " << tmp_point << std::endl;
+                        cluster_id++;
+                    }
+                    else
+                    {
+                        // Add point to existing object
+                        if (neighbor_point_ptr != nullptr)
+                        {
+                            if ( euclideanDistance3D(neighbor_point_ptr, &tmp_point) < radiusThreshold )
+                            {
+                                neighborObject->addOrganizedPoint(tmp_point, col, row);
+                                labels.at<uint16_t>(row, col) = neighborObject->getID();
+                      //          std::cout << "DEBUG added EXISTING point to object: [" << labels.at<uint16_t>(row, col) << "] " << row << " " << col << " " << tmp_point << std::endl;
+                            }
+                        }
+                        else std::cerr << "DEBUG got no organized point from row " << row << " col " << col << std::endl;
+                    }
+                }
+                else
+                    outOfRange++;
             }
         }
-        std::cout << std::endl << "euclideanConnectedComponentsOrganized" << std::endl << labels << std::endl << std::endl;
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count();
+        std::cout << std::endl << "DEBUG objectClouds " << objectClouds.size() << " out of range: " << outOfRange << " took: " << duration << std::endl << std::endl;
+         std::cout << std::endl << "DEBUG label matrix " << labels.rows << " " << labels.cols << std::endl << labels << std::endl << std::endl;
+
+        cv::Mat show;
+        labels.copyTo(show);
+        show.convertTo(show, CV_8UC1);
+        double min, max;
+        cv::minMaxIdx(show, &min, &max);
+        double scale = std::numeric_limits<uint8_t>::max() / max;
+        cv::applyColorMap( show*scale, show, cv::COLORMAP_JET);
+        cv::imshow("components", show);
+        cv::waitKey(0);
+
+        return objectClouds;
     }
+
+    //    std::vector<TrackedObject*> euclideanConnectedComponentsOrganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float radiusThreshold, float distanceThreshold)
+    //    {
+    //        std::cout << "euclideanConnectedComponentsOrganized" <<  std::endl;
+    //        std::vector<TrackedObject*> objectClouds;
+
+    //        auto width = cloud->width;
+    //        auto height = cloud->height;
+    //        uint16_t cluster_id = 0;
+
+    //        cv::Mat labels = cv::Mat(height, width, CV_32SC1, cv::Scalar(-1));
+
+    //        pcl::PointXYZ tmp_point;
+    //        int outOfRange = 0;
+
+    //        for (size_t row = 0; row < height; row++)
+    //        {
+    //            for (size_t col = 0; col < width; col++)
+    //            {
+    //                tmp_point = cloud->at(col,row);
+
+    //                if ((tmp_point.z > 0) && (tmp_point.z < distanceThreshold))
+    //                {
+    //                    std::cout << "DEBUG process: " << (row == 0) << " " << (col == 0) << std::endl;
+    //                    if (row == 0)
+    //                    {
+    //                        if (col == 0)
+    //                        {
+    //                            // First pixel - new label
+    //                            objectClouds.push_back(new TrackedObject(cluster_id));
+    //                            objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
+    //                            labels.at<int32_t>(row, col) = cluster_id;
+    //                            std::cout << "DEBUG added first point: " << cluster_id << " "  << tmp_point << std::endl;
+    //                            cluster_id++;
+    //                        }
+    //                        else
+    //                        {
+    //                            // First row
+    //                            int32_t neighbor_label = labels.at<int32_t>(row, col-1);
+    //                            if (neighbor_label >= 0)
+    //                            {
+    //                                auto neighbor_point = objectClouds.at(neighbor_label)->getOrganizedPoint(row, col-1);
+    //                                if (neighbor_point)
+    //                                {
+    //                                    if ( radiusThreshold > euclideanDistance3D(neighbor_point, &tmp_point) )
+    //                                    {
+    //                                        // Existing label
+    //                                        objectClouds.at(neighbor_label)->addOrganizedPoint(tmp_point, col, row);
+    //                                        labels.at<int32_t>(row, col) = objectClouds.at(neighbor_label)->getID();
+    //                                        std::cout << "DEBUG added EXISTING first row point: " << objectClouds.at(neighbor_label)->getID() << " " << tmp_point << std::endl;
+    //                                    }
+    //                                    else
+    //                                    {
+    //                                        // New label
+    //                                        objectClouds.push_back(new TrackedObject(cluster_id));
+    //                                        objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
+    //                                        labels.at<int32_t>(row, col) = cluster_id;
+    //                                        std::cout << "DEBUG added NEW first row point: " << cluster_id << " " << tmp_point << std::endl;
+    //                                        cluster_id++;
+    //                                    }
+
+    //                                }
+    //                            }
+
+    //                        }
+    //                    }
+    //                    else
+    //                    {
+    //                        // Check upper neighbor
+    //                        int32_t neighbor_label_up = labels.at<int32_t>(row-1, col);
+    //                        bool found_upper = false;
+    //                        if (neighbor_label_up >= 0)
+    //                        {
+    //                            auto neighbor_point_up = objectClouds.at(neighbor_label_up)->getOrganizedPoint(row-1, col);
+    //                            if (neighbor_point_up)
+    //                            {
+    //                                found_upper = true;
+    //                                if ( radiusThreshold > euclideanDistance3D(neighbor_point_up, &tmp_point) )
+    //                                {
+    //                                    // Existing label
+    //                                    objectClouds.at(neighbor_label_up)->addOrganizedPoint(tmp_point, col, row);
+    //                                    labels.at<int32_t>(row, col) = objectClouds.at(neighbor_label_up)->getID();
+    //                                    std::cout << "DEBUG added EXISTING upper point: " << objectClouds.at(neighbor_label_up)->getID() << " " << tmp_point << std::endl;
+    //                                }
+    //                                else
+    //                                {
+    //                                    // New label
+    //                                    objectClouds.push_back(new TrackedObject(cluster_id));
+    //                                    objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
+    //                                    labels.at<int32_t>(row, col) = cluster_id;
+    //                                    std::cout << "DEBUG added NEW upper point: " << cluster_id << " " << tmp_point << std::endl;
+    //                                    cluster_id++;
+    //                                }
+    //                            }
+
+    //                        }
+
+    //                        if (!found_upper && col > 0)
+    //                        {
+    //                            // Check left neighbor
+    //                            int32_t neighbor_label_left = labels.at<int32_t>(row, col-1);
+    //                            if (neighbor_label_left >= 0)
+    //                            {
+    //                                auto neighbor_point_left = objectClouds.at(neighbor_label_left)->getOrganizedPoint(row, col-1);
+    //                                if (neighbor_point_left)
+    //                                {
+    //                                    if ( radiusThreshold > euclideanDistance3D(neighbor_point_left, &tmp_point) )
+    //                                    {
+    //                                        // Existing label
+    //                                        objectClouds.at(neighbor_label_left)->addOrganizedPoint(tmp_point, col, row);
+    //                                        labels.at<int32_t>(row, col) = objectClouds.at(neighbor_label_left)->getID();
+    //                                        std::cout << "DEBUG added EXISTING left point: " << objectClouds.at(neighbor_label_left)->getID() << " " << tmp_point << std::endl;
+    //                                    }
+    //                                    else
+    //                                    {
+    //                                        // New label
+    //                                        objectClouds.push_back(new TrackedObject(cluster_id));
+    //                                        objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
+    //                                        labels.at<int32_t>(row, col) = cluster_id;
+    //                                        std::cout << "DEBUG added NEW left point: " << cluster_id << " " << tmp_point << std::endl;
+    //                                        cluster_id++;
+    //                                    }
+    //                                }
+
+    //                            }
+    //                        }
+    //                    }
+
+    //                }
+    //                else
+    //                    outOfRange++;
+    //            }
+    //        }
+    //        std::cout << std::endl << "objectClouds " << objectClouds.size() << " out of range: " << outOfRange << std::endl << std::endl;
+    //        //      std::cout << std::endl << "euclideanConnectedComponentsOrganized" << std::endl << labels << std::endl << std::endl;
+    //        return objectClouds;
+    //    }
 
     void euclideanConnectedComponentsUnorganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::vector<TrackedObject> *objects)
     {
@@ -351,7 +554,9 @@ public:
         }
         if (idle)
         {
+#if VERBOSE
             std::cerr << "(Pcl-Viewer) Idle" << std::endl;
+#endif
             std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_PCL_VIEW_NS));
             return;
         }

@@ -111,6 +111,7 @@ void ProcessingInterface::pc_proc_thread_func()
 #endif
 
     bool savepcd = true;
+    bool executeOnce = true;
 
     while (m_active)
     {
@@ -140,7 +141,8 @@ void ProcessingInterface::pc_proc_thread_func()
                 cv::minMaxLoc(mat_depth, &min, &max);
                 auto test = std::numeric_limits<unsigned short>::max();
                 double scale = test / max;
-                cv::imshow("depth "+std::to_string(camType), mat_depth*scale);
+              //  cv::imshow("depth "+std::to_string(camType), mat_depth*scale);
+
 
             }
         }
@@ -159,11 +161,11 @@ void ProcessingInterface::pc_proc_thread_func()
 #if (VERBOSE > 0)
                 std::cout << "(ProcessingInterface) Color image received from camera " << camType << " (" << count << ") size: " << mat_color.size() << std::endl;
 #endif
-                cv::imshow("color "+std::to_string(camType), mat_color);
+              //  cv::imshow("color "+std::to_string(camType), mat_color);
             }
         }
 #endif
-        cv::waitKey(1);
+    //    cv::waitKey(1);
 #endif
 
 
@@ -185,11 +187,21 @@ void ProcessingInterface::pc_proc_thread_func()
 
 #if PCL_VIEWER
                 m_viewer_mtx.lock();
-
-                m_viewer_clouds.at(i) = pointcloud;
-
+                m_viewer_clouds.at(i) = pointcloud->makeShared();
                 m_viewer_mtx.unlock();
 #endif
+
+                if ((true))
+                {
+                    if (executeOnce && camType == CameraType_t::CENTRAL)
+                    {
+                        //   pointcloud->
+                        executeOnce = false;
+                        if (pointcloud->isOrganized())
+                            euclideanConnectedComponentsOrganized(pointcloud, 0.1, 0.75);
+                    }
+                }
+
 
             }
         }
@@ -335,7 +347,9 @@ void ProcessingInterface::pc_proc_thread_func()
 
         if (idle)
         {
+#if VERBOSE
             std::cerr << "(ProcessingInterface) Idle" << std::endl;
+#endif
             std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_PCL_POLL_NS));
             continue;
         }
@@ -407,7 +421,9 @@ void CloudQueue::addCloudT(std::tuple<unsigned long long, pcl::PointCloud<pcl::P
     m_cqueue.push_back(cloud_tuple);
     if (m_cqueue.size() > QUE_SIZE_PCL)
     {
+#if VERBOSE
         std::cerr << "(CloudQueue) Too many clouds in queue " << m_name << " " << m_camtype << std::endl;
+#endif
         m_cqueue.pop_front();
     }
     m_mtx.unlock();

@@ -267,7 +267,8 @@ public:
                     int left_col = col - 1;
                     bool new_object = false;
                     TrackedObject* neighborObject = nullptr;
-                    pcl::PointXYZ* neighbor_point_ptr = nullptr;
+                //    pcl::PointXYZ* neighbor_point_ptr = nullptr;
+                    pcl::PointXYZ neighbor_point;
 
                     if (upper_row < 0)
                     {
@@ -284,7 +285,8 @@ public:
                             {
                              //   std::cout << "DEBUG found neighbor LEFT (first row) " << row << " " << left_col << std::endl;
                                 neighborObject = objectClouds.at(neighbor_label-1);
-                                neighbor_point_ptr = neighborObject->getOrganizedPoint(left_col, row);//(row, left_col);
+                              //  neighbor_point_ptr = neighborObject->getOrganizedPoint(left_col, row);//(row, left_col);
+                                neighbor_point = cloud->at(left_col, row);
                             }
                             else
                                 new_object = true;
@@ -298,7 +300,8 @@ public:
                         {
                         //    std::cout << "DEBUG found neighbor UPPER (first column) " << upper_row << " " << col << std::endl;
                             neighborObject = objectClouds.at(neighbor_label-1);
-                            neighbor_point_ptr = neighborObject->getOrganizedPoint(col, upper_row);//(upper_row, col);
+                        //    neighbor_point_ptr = neighborObject->getOrganizedPoint(col, upper_row);//(upper_row, col);
+                            neighbor_point = cloud->at(col, upper_row);
                         }
                         else
                             new_object = true;
@@ -311,7 +314,8 @@ public:
                         {
                          //   std::cout << "DEBUG found neighbor UPPER (body) " << upper_row << " " << col << std::endl;
                             neighborObject = objectClouds.at(neighbor_label_up-1);
-                            neighbor_point_ptr = neighborObject->getOrganizedPoint(col, upper_row);//(upper_row, col);
+                           // neighbor_point_ptr = neighborObject->getOrganizedPoint(col, upper_row);//(upper_row, col);
+                            neighbor_point = cloud->at(col, upper_row);
                         }
                         else
                         {
@@ -320,7 +324,8 @@ public:
                             {
                             //    std::cout << "DEBUG found neighbor LEFT (body) " << row << " " << left_col << std::endl;
                                 neighborObject = objectClouds.at(neighbor_label_left-1);
-                                neighbor_point_ptr = neighborObject->getOrganizedPoint(left_col, row);//(row, left_col);
+                              //  neighbor_point_ptr = neighborObject->getOrganizedPoint(left_col, row);//(row, left_col);
+                                neighbor_point = cloud->at(left_col, row);
                             }
                             else
                                 new_object = true;
@@ -340,16 +345,16 @@ public:
                     else
                     {
                         // Add point to existing object
-                        if (neighbor_point_ptr != nullptr)
+                        if (neighbor_point.z)
                         {
-                            if ( euclideanDistance3D(neighbor_point_ptr, &tmp_point) < radiusThreshold )
+                            if ( euclideanDistance3D(&neighbor_point, &tmp_point) < radiusThreshold )
                             {
                                 neighborObject->addOrganizedPoint(tmp_point, col, row);
                                 labels.at<uint16_t>(row, col) = neighborObject->getID();
                       //          std::cout << "DEBUG added EXISTING point to object: [" << labels.at<uint16_t>(row, col) << "] " << row << " " << col << " " << tmp_point << std::endl;
                             }
                         }
-                        else std::cerr << "DEBUG got no organized point from row " << row << " col " << col << std::endl;
+                        else std::cerr << "DEBUG got no neighbor point from row " << row << " col " << col << std::endl;
                     }
                 }
                 else
@@ -358,7 +363,7 @@ public:
         }
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count();
         std::cout << std::endl << "DEBUG objectClouds " << objectClouds.size() << " out of range: " << outOfRange << " took: " << duration << std::endl << std::endl;
-         std::cout << std::endl << "DEBUG label matrix " << labels.rows << " " << labels.cols << std::endl << labels << std::endl << std::endl;
+    //     std::cout << std::endl << "DEBUG label matrix " << labels.rows << " " << labels.cols << std::endl << labels << std::endl << std::endl;
 
         cv::Mat show;
         labels.copyTo(show);

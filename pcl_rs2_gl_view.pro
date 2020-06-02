@@ -16,6 +16,7 @@ SOURCES += \
 HEADERS += \
     customtypes.h \
     deviceinterface.h \
+    filters.h \
     format.h \
     ocvdevice.h \
     processinginterface.h \

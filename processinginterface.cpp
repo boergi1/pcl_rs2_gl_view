@@ -136,12 +136,25 @@ void ProcessingInterface::pc_proc_thread_func()
 #if (VERBOSE > 0)
                 std::cout << "(ProcessingInterface) Depth image received from camera " << camType << " (" << count << ") size: " << mat_depth.size() << std::endl;
 #endif
-                //  cv::applyColorMap(mat_depth, mat_depth, cv::COLORMAP_JET);
-                double min, max;
-                cv::minMaxLoc(mat_depth, &min, &max);
-                auto test = std::numeric_limits<unsigned short>::max();
-                double scale = test / max;
-              //  cv::imshow("depth "+std::to_string(camType), mat_depth*scale);
+                if ((false))
+                {
+                    //  cv::applyColorMap(mat_depth, mat_depth, cv::COLORMAP_JET);
+                    double min, max;
+                    cv::minMaxLoc(mat_depth, &min, &max);
+                    auto test = std::numeric_limits<unsigned short>::max();
+                    double scale = test / max;
+                    //  cv::imshow("depth "+std::to_string(camType), mat_depth*scale);
+                }
+
+                if ((false))
+                {
+                    if (executeOnce && camType == CameraType_t::CENTRAL)
+                    {
+                        //   pointcloud->
+                        executeOnce = false;
+
+                    }
+                }
 
 
             }
@@ -161,11 +174,11 @@ void ProcessingInterface::pc_proc_thread_func()
 #if (VERBOSE > 0)
                 std::cout << "(ProcessingInterface) Color image received from camera " << camType << " (" << count << ") size: " << mat_color.size() << std::endl;
 #endif
-              //  cv::imshow("color "+std::to_string(camType), mat_color);
+                //  cv::imshow("color "+std::to_string(camType), mat_color);
             }
         }
 #endif
-    //    cv::waitKey(1);
+        //    cv::waitKey(1);
 #endif
 
 
@@ -198,7 +211,8 @@ void ProcessingInterface::pc_proc_thread_func()
                         //   pointcloud->
                         executeOnce = false;
                         if (pointcloud->isOrganized())
-                            euclideanConnectedComponentsOrganized(pointcloud, 0.1, 0.75);
+                            euclideanConnectedComponentsOrganized(pointcloud);
+                        else std::cerr << "DEBUG not organized" << std::endl;
                     }
                 }
 

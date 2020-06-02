@@ -25,6 +25,7 @@
 #include <pcl/common/transforms.h>
 
 #include "format.h"
+#include "filters.h"
 #include "customtypes.h"
 #include "deviceinterface.h"
 #include "processinginterface.h"
@@ -220,7 +221,7 @@ public:
             auto tmp_t = in.front();
             in.pop_front();
             cv::Mat depth_mat = std::get<1>(tmp_t);
-            MatToCloudXYZ(depth_mat, cloud, m_intr, m_extr);
+            transformDepthMatToCloud(depth_mat, cloud, m_intr, m_extr);
             out.at(i++) = std::make_tuple(std::get<0>(tmp_t), cloud, std::get<2>(tmp_t));
         }
         this->setTaskStatus(TASK_DONE);
@@ -233,7 +234,26 @@ private:
     camera_intrinsics_t* m_intr;
     camera_extrinsics_t* m_extr;
 
-    void MatToCloudXYZ(cv::Mat& depthMat, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, camera_intrinsics_t* intrinsics, camera_extrinsics_t* extrinsics)
+//    void filterRegionDepthMat(cv::Mat& depthMat, ushort threshold_z)
+//    {
+//        ushort* data_ptr = (ushort*) depthMat.data;
+//        for (int i = 0; i<depthMat.rows; i++)
+//        {
+//            for (int j = 0; j < depthMat.cols; j++)
+//            {
+//                float z = static_cast<ushort>(*data_ptr);
+//            }
+//        }
+//    }
+//    // GLOBAL_REGION_X_MIN_M
+//    void connectedComponentsDepthMat(cv::Mat& depthMat)
+//    {
+//        GLOBAL_REGION_Z_MAX_M;
+//        //    distImage.convertTo()
+
+//    }
+
+    void transformDepthMatToCloud(cv::Mat& depthMat, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, camera_intrinsics_t* intrinsics, camera_extrinsics_t* extrinsics, bool filterRegion = false)
     {
         size_t point_idx = 0, skipped_pts = 0;
         ushort* data_ptr = (ushort*) depthMat.data;
@@ -242,7 +262,7 @@ private:
         {
             for (int j = 0; j < depthMat.cols; j++)
             {
-                float z = static_cast<ushort>(*data_ptr) * 0.001; // segfault
+                float z = static_cast<ushort>(*data_ptr) * 0.001; // segfault with depth queue in converter_thread_func
                 // z = 0.001 * z;
                 if (z > 0.f)
                 {
@@ -268,7 +288,7 @@ private:
                 ++data_ptr;
             }
         }
-//        std::cout << "DEBUG skipped " << skipped_pts << "(type:" << this->getTaskType() << " id:" << this->getTaskId() << ")" << std::endl;
+        //        std::cout << "DEBUG skipped " << skipped_pts << "(type:" << this->getTaskType() << " id:" << this->getTaskId() << ")" << std::endl;
     }
 
     inline void transformPointToPoint(const float* origin_pt, float* target_pt, const camera_extrinsics_t* extrin)
@@ -426,12 +446,12 @@ private:
         std::memcpy(M_ptr, src.data, src.rows*src.step);
         return M_ptr;
     }
-//    void* copyMatDataPtr(cv::Mat& src)
-//    {
-//        void* M_ptr = operator new(src.total());
-//        std::memcpy(M_ptr, src.data, src.rows*src.step);
-//        return M_ptr;
-//    }
+    //    void* copyMatDataPtr(cv::Mat& src)
+    //    {
+    //        void* M_ptr = operator new(src.total());
+    //        std::memcpy(M_ptr, src.data, src.rows*src.step);
+    //        return M_ptr;
+    //    }
 
 
 public:

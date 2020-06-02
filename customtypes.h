@@ -9,6 +9,7 @@
 
 #include <iostream>
 
+
 typedef struct camera_intrinsics_s {
     float fx, fy, cx, cy;       // camera coeffs
     float k1, k2, p1, p2, k3;   // distortion coeffs
@@ -70,6 +71,13 @@ typedef enum
     REAR,
     OTHER
 } CameraType_t;
+
+typedef enum
+{
+    BACKGROUND = 0,
+    UNIDENTIFIED,
+    OBJECTS
+} LabelType_t;
 
 typedef struct shared_references_s
 {

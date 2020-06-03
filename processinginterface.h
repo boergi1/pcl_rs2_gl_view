@@ -9,6 +9,7 @@
 #include <pcl/common/common_headers.h>
 
 #include <pcl/console/parse.h>
+#include <pcl/console/time.h>
 
 //#include <pcl/io/io.h>
 #include <pcl/io/pcd_io.h>
@@ -261,8 +262,9 @@ public:
     {
         auto start = std::chrono::high_resolution_clock::now();
         float distanceThresholdMax = 0.75f;
-        float distanceThresholdMin = 0.0f;//0.70f;
+        float distanceThresholdMin = 0.70f;
         float radiusThreshold = 0.001f;
+        bool debugPrint = false;
 
         //     std::vector<TrackedObject*> objectClouds;
 
@@ -283,7 +285,7 @@ public:
 
         int outOfRange = 0;
 
-        std::cout << "euclideanConnectedComponentsOrganized " << labels.rows << "x" << labels.cols <<  std::endl;
+        std::cout << "euclideanConnectedComponentsOrganized   kernel_center " << kernel_center<< " " << labels.rows << "x" << labels.cols <<  std::endl;
 
 
 
@@ -292,128 +294,186 @@ public:
             for (int col = kernel_center.x; col < labels.cols - kernel_center.x; col++)
             {
                 uint16_t current_label = labels.at<uint16_t>(row, col);
-                if ( current_label == LabelType_t::BACKGROUND ) // if background
+                // Only use 4N for background?
+                if ( current_label == LabelType_t::BACKGROUND )
                     continue;
                 // Check for valid point
                 tmp_point = cloud->at(col, row);
-                if ((tmp_point.z > distanceThresholdMin) && (tmp_point.z < distanceThresholdMax))
+                if (tmp_point.z < distanceThresholdMin || tmp_point.z > distanceThresholdMax)
                 {
-                    // Only have a look at unidentified center pixels, != could be changed to < to also use center when already identified
-                    //                    if ( labels.at<uint16_t>(row, col) < LabelType_t::UNIDENTIFIED )
-                    //                        continue;
-                    // Using 3x3 kernel / N8
-                    for (int k_y = -kernel_center.y; k_y < kernel_center.y; k_y++)
+                    outOfRange++;
+                    labels.at<uint16_t>(row, col) = static_cast<uint16_t>( LabelType_t::BACKGROUND );
+                    continue;
+                }
+
+                if (debugPrint)
+                    std::cout << "DEBUG Center(x,y) = [" << col << "," << row << "] type: " << labels.at<uint16_t>(row, col)
+                              << " 3D Point: (" << tmp_point.x << "," << tmp_point.y << "," << tmp_point.z << ")" << std::endl;
+
+                // Only have a look at unidentified center pixels, != could be changed to < to also use center when already identified
+                //                    if ( labels.at<uint16_t>(row, col) < LabelType_t::UNIDENTIFIED )
+                //                        continue;
+                // Using 3x3 kernel / N8
+                for (int k_y = -kernel_center.y; k_y < kernel_center.y+1; k_y++)
+                {
+                    for (int k_x = -kernel_center.x; k_x < kernel_center.x+1; k_x++)
                     {
-                        for (int k_x = -kernel_center.x; k_x < kernel_center.x; k_x++)
+                        if ((k_x == 0) && (k_y == 0))
+                            continue;
+
+                        int n_x = col + k_x;
+                        int n_y = row + k_y;
+                        uint16_t neighbor_label = labels.at<uint16_t>(n_y, n_x);
+                        if (neighbor_label == LabelType_t::BACKGROUND)
+                            continue;
+
+                        if (debugPrint)
+                            std::cout << "DEBUG Neighbor(x,y) = [" << n_x << "," << n_y << "] type: " << labels.at<uint16_t>(n_y, n_x) << std::endl;
+
+                        current_label = labels.at<uint16_t>(row, col);
+                        // Neighbor is unidentified or an identified object
+                        auto neighbor_point = cloud->at(n_x, n_y);
+                        if (neighbor_point.z < distanceThresholdMin || neighbor_point.z > distanceThresholdMax)
                         {
-                            if ((k_x == 0) && (k_y == 0))
-                                continue;
-                            int n_x = col + k_x;
-                            int n_y = row + k_y;
-                            current_label = labels.at<uint16_t>(row, col);
-                            uint16_t neighbor_label = labels.at<uint16_t>(n_y, n_x);
-                            if (neighbor_label <= LabelType_t::BACKGROUND)
-                                continue;
-                            // Neighbor is unidentified or an identified object
-                            auto neighbor_point = cloud->at(n_x, n_y);
-                            if ((neighbor_point.z > distanceThresholdMin) && (neighbor_point.z < distanceThresholdMax))
+                            if (debugPrint)
+                                std::cout << "DEBUG Neighbor is background [" << n_x << "," << n_y << "]" << std::endl;
+                            // Neighbor belongs to background, but isn't marked yet
+                            outOfRange++;
+                            labels.at<uint16_t>(n_y, n_x) = static_cast<uint16_t>( LabelType_t::BACKGROUND );
+                            continue;
+                        }
+                        // Neighbor has valid coordinates
+                        bool inRange = euclideanDistance3D(&neighbor_point, &tmp_point) < radiusThreshold;
+                        if ( !inRange )
+                        {
+                            if (debugPrint)
+                                std::cout << "DEBUG Neighbor is not in radius [" << n_x << "," << n_y << "]" << std::endl;
+                            continue;
+                        }
+                        // Neighbor point is in range of center point
+                        if (neighbor_label == LabelType_t::UNIDENTIFIED)
+                        {
+                            // Unidentified neighbor
+                            if (current_label == LabelType_t::UNIDENTIFIED)
                             {
-                                // Neighbor has valid coordinates
-                                bool inRange = euclideanDistance3D(&neighbor_point, &tmp_point) < radiusThreshold;
-                                if ( !inRange )
-                                    continue;
-                                // Neighbor point is in range of center point
-                                if (neighbor_label == LabelType_t::UNIDENTIFIED)
-                                {
-                                    // Unidentified neighbor
-                                    if (current_label == LabelType_t::UNIDENTIFIED)
-                                    {
-                                        // Center pixel is also unidentified, create a new object
-                                        //                                        objectClouds.push_back(new TrackedObject(cluster_id));
-                                        //                                        objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
-                                        //                                        objectClouds.back()->addOrganizedPoint(neighbor_point, n_x, n_y);
-                                        labels.at<uint16_t>(row, col) = cluster_id;
-                                        labels.at<uint16_t>(n_y, n_x) = cluster_id;
-                                        cluster_id++;
+                                if (debugPrint)
+                                    std::cout << "DEBUG combine with Neighbor [" << n_x << "," << n_y << "]" << std::endl;
+                                // Center pixel is also unidentified, create a new object
+                                //                                        objectClouds.push_back(new TrackedObject(cluster_id));
+                                //                                        objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
+                                //                                        objectClouds.back()->addOrganizedPoint(neighbor_point, n_x, n_y);
+                                labels.at<uint16_t>(row, col) = static_cast<uint16_t>( cluster_id );
+                                labels.at<uint16_t>(n_y, n_x) =static_cast<uint16_t>(  cluster_id );
+                                //     current_label = cluster_id;
+                                cluster_id++;
 
-                                        //                                        std::cout << "DEBUG created NEW object with points: C [" << labels.at<uint16_t>(row, col)
-                                        //                                                  << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
-                                        //                                                  << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
-                                    }
-                                    else
-                                    {
-                                        // Center pixel belongs to object, add neighbor to current label
-                                        //                                        objectClouds.at(current_label - LabelType_t::OBJECTS)->addOrganizedPoint(neighbor_point, n_x, n_y);
-                                        labels.at<uint16_t>(n_y, n_x) = current_label;
-
-                                        //                                        std::cout << "DEBUG added NEW neighbor to existing center object with points: C [" << labels.at<uint16_t>(row, col)
-                                        //                                                  << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
-                                        //                                                  << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
-                                    }
-                                }
-                                else
-                                {
-                                    // Neighbor is identified and already belongs to an object
-                                    if (current_label == LabelType_t::UNIDENTIFIED)
-                                    {
-                                        // Add center point to existing neighbor object
-                                        //                                        objectClouds.at(neighbor_label - LabelType_t::OBJECTS)->addOrganizedPoint(tmp_point, col, row);
-                                        labels.at<uint16_t>(row, col) = neighbor_label;
-
-                                        //                                        std::cout << "DEBUG added NEW center to existing neighbor object with points: C [" << labels.at<uint16_t>(row, col)
-                                        //                                                  << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
-                                        //                                                  << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
-                                    }
-                                    else
-                                    {
-                                        // Neighbor and center are both identified,
-                                        // which means both belong to the same OR different objects
-                                        if (neighbor_label != current_label)
-                                        {
-                                            // Check if both points belong to the same object
-                                            if (euclideanDistance3D(&neighbor_point, &tmp_point) < radiusThreshold)
-                                            {
-                                                // Both belong to the same object, combine them
-                                                //                                                auto neighbor_object = objectClouds.at(neighbor_label - LabelType_t::OBJECTS);
-                                                //                                                auto center_object = objectClouds.at(current_label - LabelType_t::OBJECTS);
-                                                if (current_label < neighbor_label)
-                                                {
-                                                    //                                                    center_object->addOrganizedIndices(neighbor_object->getOrganizedIndices());
-                                                    //                                                    center_object->addCloud(neighbor_object->getCloud());
-                                                    //                                                    neighbor_object->clear();
-                                                    labels.at<uint16_t>(n_y, n_x) = current_label;
-                                                }
-                                                else
-                                                {
-                                                    //                                                    neighbor_object->addOrganizedIndices(center_object->getOrganizedIndices());
-                                                    //                                                    neighbor_object->addCloud(center_object->getCloud());
-                                                    //                                                    center_object->clear();
-                                                    labels.at<uint16_t>(row, col) = neighbor_label;
-                                                }
-
-                                                //                                                std::cout << "DEBUG combined existing center with existing neighbor object with points: C [" << labels.at<uint16_t>(row, col)
-                                                //                                                          << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
-                                                //                                                          << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
-
-                                            }
-                                        }
-                                    }
-                                }
+                                //                                        std::cout << "DEBUG created NEW object with points: C [" << labels.at<uint16_t>(row, col)
+                                //                                                  << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
+                                //                                                  << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
                             }
                             else
                             {
-                                // Neighbor belongs to background, but isn't marked yet
-                                outOfRange++;
-                                labels.at<uint16_t>(n_y, n_x) = LabelType_t::BACKGROUND;
+                                if (debugPrint)
+                                    std::cout << "DEBUG add Neighbor to current [" << n_x << "," << n_y << "]" << std::endl;
+                                // Center pixel belongs to object, add neighbor to current label
+                                //                                        objectClouds.at(current_label - LabelType_t::OBJECTS)->addOrganizedPoint(neighbor_point, n_x, n_y);
+                                labels.at<uint16_t>(n_y, n_x) = static_cast<uint16_t>( current_label );
+
+                                //                                        std::cout << "DEBUG added NEW neighbor to existing center object with points: C [" << labels.at<uint16_t>(row, col)
+                                //                                                  << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
+                                //                                                  << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
                             }
                         }
+                        else
+                        {
+                            // Neighbor is identified and already belongs to an object
+                            if (current_label == LabelType_t::UNIDENTIFIED)
+                            {
+                                if (debugPrint)
+                                    std::cout << "DEBUG add Center to Neighbor [" << n_x << "," << n_y << "]" << std::endl;
+                                // Add center point to existing neighbor object
+                                //                                        objectClouds.at(neighbor_label - LabelType_t::OBJECTS)->addOrganizedPoint(tmp_point, col, row);
+                                labels.at<uint16_t>(row, col) = static_cast<uint16_t>( neighbor_label );
+                                //   current_label = neighbor_label;
+
+                                //                                        std::cout << "DEBUG added NEW center to existing neighbor object with points: C [" << labels.at<uint16_t>(row, col)
+                                //                                                  << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
+                                //                                                  << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
+                            }
+                            else
+                            {
+                                if (debugPrint)
+                                    std::cout << "DEBUG Center and Neighbor already identified [" << n_x << "," << n_y << "]" << std::endl;
+                                // Neighbor and center are both identified,
+                                // which means both belong to the same objects
+                                if (neighbor_label != current_label)
+                                {
+                                    if (current_label < neighbor_label)
+                                    {
+                                        labels.at<uint16_t>(n_y, n_x) = static_cast<uint16_t>( current_label );
+                                    }
+                                    else
+                                    {
+                                        labels.at<uint16_t>(row, col) = static_cast<uint16_t>( neighbor_label );
+                                    }
+
+                                }
+                                //                                    else
+                                //                                    {
+                                //                                        labels.at<uint16_t>(row, col) = static_cast<uint16_t>( neighbor_label );
+                                //                                    }
+
+
+                                //                                    // Neighbor and center are both identified,
+                                //                                    // which means both belong to the same OR different objects
+                                //                                    if (neighbor_label != current_label)
+                                //                                    {
+                                //                                        // Check if both points belong to the same object
+                                //                                        if (euclideanDistance3D(&neighbor_point, &tmp_point) < radiusThreshold)
+                                //                                        {
+                                //                                            // Both belong to the same object, combine them
+                                //                                            //                                                auto neighbor_object = objectClouds.at(neighbor_label - LabelType_t::OBJECTS);
+                                //                                            //                                                auto center_object = objectClouds.at(current_label - LabelType_t::OBJECTS);
+                                //                                            if (current_label < neighbor_label)
+                                //                                            {
+                                //                                                //                                                    center_object->addOrganizedIndices(neighbor_object->getOrganizedIndices());
+                                //                                                //                                                    center_object->addCloud(neighbor_object->getCloud());
+                                //                                                //                                                    neighbor_object->clear();
+                                //                                                labels.at<uint16_t>(n_y, n_x) = static_cast<uint16_t>( current_label );
+                                //                                            }
+                                //                                            else
+                                //                                            {
+                                //                                                //                                                    neighbor_object->addOrganizedIndices(center_object->getOrganizedIndices());
+                                //                                                //                                                    neighbor_object->addCloud(center_object->getCloud());
+                                //                                                //                                                    center_object->clear();
+                                //                                                labels.at<uint16_t>(row, col) = static_cast<uint16_t>( neighbor_label );
+                                //                                                //     current_label = neighbor_label;
+                                //                                            }
+
+                                //                                            //                                                std::cout << "DEBUG combined existing center with existing neighbor object with points: C [" << labels.at<uint16_t>(row, col)
+                                //                                            //                                                          << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
+                                //                                            //                                                          << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
+
+                                //                                        }
+                                //                                    }
+                            }
+                        }
+
                     }
                 }
-                else
+
+                if (labels.at<uint16_t>(row, col) == LabelType_t::UNIDENTIFIED)
                 {
+                    if (debugPrint)
+                        std::cout << "DEBUG Nothing found for center [" << col << "," << row << "]" << std::endl;
+                    // No partner found, move to background
                     outOfRange++;
-                    labels.at<uint16_t>(row, col) = LabelType_t::BACKGROUND;
+                    labels.at<uint16_t>(row, col) = static_cast<uint16_t>( LabelType_t::BACKGROUND );
                 }
+
+
+
+
             }
         }
 
@@ -425,11 +485,12 @@ public:
         std::vector<TrackedObject*> objectClouds;
         cv::Mat cvMask, cvStats, cvCentroids;
         cv::Mat converted_labels;
+        //     labels.copyTo(converted_labels)
         labels.convertTo(converted_labels, CV_8U);
 
-        //        std::cout << "DEBUG unconverted labels" << std::endl << converted_labels << std::endl;
+        //                std::cout << "DEBUG unconverted labels" << std::endl << converted_labels << std::endl;
 
-        //        std::cout << "DEBUG converted labels" << std::endl << converted_labels << std::endl;
+        //   std::cout << "DEBUG converted labels" << std::endl << converted_labels << std::endl;
 
         //   std::cout << "DEBUG stats" << std::endl;
 
@@ -449,7 +510,7 @@ public:
             auto area = cvStats.at<int>(i, cv::CC_STAT_AREA);
             auto cx = cvCentroids.at<double>(i, 0);
             auto cy = cvCentroids.at<double>(i, 1);
-            std::cout << "X " << x << " Y " << y << " W " << w << " H " << h << " A " << area << " CX " << cx << " CY " << cy << std::endl;
+            //     std::cout << "X " << x << " Y " << y << " W " << w << " H " << h << " A " << area << " CX " << cx << " CY " << cy << std::endl;
 
             cv::rectangle(show_markers, cv::Rect(x, y, w, h), cv::Scalar(255), 1);
             //            cv::circle(show_markers, cv::Point2d(cx, cy), 10, cv::Scalar(255), -1);
@@ -504,7 +565,7 @@ public:
         double min, max;
         cv::minMaxIdx(show, &min, &max);
         double scale = std::numeric_limits<uint8_t>::max() / max;
-        cv::applyColorMap( show*scale, show, cv::COLORMAP_JET);
+        cv::applyColorMap( show*scale, show, cv::COLORMAP_HOT);
         cv::imshow("components", show);
         cv::imshow("markers", show_markers);
         cv::waitKey(0);
@@ -768,8 +829,220 @@ public:
     //        return objectClouds;
     //    }
 
-    void euclideanConnectedComponentsUnorganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::vector<TrackedObject> *objects)
+    void euclideanConnectedComponentsUnorganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
     {
+        std::cout << "euclideanConnectedComponentsUnorganized " << cloud->height << "x" << cloud->width << std::endl;
+
+        //        auto start = std::chrono::high_resolution_clock::now();
+        //        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count();
+
+        float distanceThresholdMax = 0.75f;
+        float distanceThresholdMin = 0.70f;
+        float radiusThreshold = 0.001f;
+        bool debugPrint = false;
+
+        //     std::vector<TrackedObject*> objectClouds;
+
+
+        int cluster_id = LabelType_t::OBJECTS;
+
+        pcl::console::TicToc tt;
+        tt.tic();
+        std::vector<int> labels = std::vector<int>(cloud->size(), LabelType_t::UNIDENTIFIED);
+
+        for (int i = 0 ; i < cloud->size() ; i++ )
+        {
+
+            if (labels.at(i) != LabelType_t::UNIDENTIFIED) // only unidentified
+                continue;
+             //           std::cout << i+1 << " out of " << cloud->size() << std::endl;
+            auto point_1 = cloud->at(i);
+            if (point_1.z == 0.0)
+            {
+                labels.at(i) = LabelType_t::BACKGROUND;
+                continue;
+            }
+
+            for (int j = 0 ; j < cloud->size() ; j++ )
+            {
+                if (labels.at(j) < LabelType_t::UNIDENTIFIED) // no background
+                    continue;
+                if (labels.at(i) == labels.at(j))
+                    continue;
+
+                auto point_2 = cloud->at(j);
+                if (point_2.z == 0.0)
+                {
+                    labels.at(j) = LabelType_t::BACKGROUND;
+                    continue;
+                }
+                if ( euclideanDistance3D(&point_1, &point_2)  < radiusThreshold ) // in range
+                {
+
+                    if (labels.at(i) > LabelType_t::UNIDENTIFIED)
+                    {
+                        // Center identified
+                        if (labels.at(j) > LabelType_t::UNIDENTIFIED)
+                        {
+                            // Both identified, combine labels if needed
+                            if (labels.at(i) < labels.at(j))
+                                labels.at(j) = labels.at(i);
+                            else
+                                labels.at(i) = labels.at(j);
+                        }
+                        else
+                        {
+                            // Neighbor unidentified, add to current label
+                            labels.at(j) = labels.at(i);
+                        }
+                    }
+                    else
+                    {
+                        // Center unidentified
+                        if (labels.at(j) > LabelType_t::UNIDENTIFIED)
+                        {
+                            // Neighbor identified, add to other label
+                            labels.at(i) = labels.at(j);
+                        }
+                        else
+                        {
+                            // Neighbor unidentified, create a new cluster
+                            labels.at(i) = cluster_id;
+                            labels.at(j) = cluster_id;
+                            cluster_id++;
+                        }
+                    }
+
+
+
+                }
+            }
+        }
+
+
+        //        cv::Mat centroidDistances(std::vector<tracked_object_t> *obj_centr, tracked_object_t *inp_centr, size_t size_in)
+        //        {
+        //            size_t size_obj = obj_centr->size();
+        //            cv::Mat result = cv::Mat::zeros(static_cast<int>(size_obj), static_cast<int>(size_in), CV_64F);
+        //            for (size_t i = 0; i < size_obj; i++)
+        //            {
+        //                double x_o = obj_centr->at(i).cx;
+        //                double y_o = obj_centr->at(i).cy;
+        //                for (size_t j = 0; j < size_in; ++j)
+        //                {
+        //                    double dx = inp_centr[j].cx - x_o;
+        //                    double dy = inp_centr[j].cy - y_o;
+        //                    result.at<double>(static_cast<int>(i), static_cast<int>(j)) = std::sqrt(dx * dx + dy * dy);
+        //                }
+        //            }
+        //            return result;
+        //        }
+
+
+
+        //        pcl::PointXYZ temp_pt;
+
+        //        // just z
+        //        for (int a = 0 ; a < 5 ; a++ )
+        //            for (int i = 0 ; i < cloud->size()-1 ; i++ )
+        //            {
+        //                auto &point_1 = cloud->at(i);
+        //                auto &point_2 = cloud->at(i+1);
+        //                if (point_1.z < point_2.z)
+        //                {
+        //                    temp_pt = point_1;
+        //                    point_1 = point_2;
+        //                    point_2 = temp_pt;
+        //                }
+        //                if (point_1.y < point_2.y)
+        //                {
+        //                    temp_pt = point_1;
+        //                    point_1 = point_2;
+        //                    point_2 = temp_pt;
+        //                }
+        //                if (point_1.x < point_2.x)
+        //                {
+        //                    temp_pt = point_1;
+        //                    point_1 = point_2;
+        //                    point_2 = temp_pt;
+        //                }
+        //            }
+
+
+
+
+
+
+
+
+        //        float temp;
+        //        for (int i = 0 ; i < cloud->size() ; i++ )
+        //        {
+        //            auto &point_1 = cloud->at(i);
+        //            float temp;
+        //            for (int j = 0 ; j < cloud->size() ; j++ )
+        //            {
+        //                if ( i==j )
+        //                    continue;
+        //                auto &point_2 = cloud->at(j);
+
+        //                if (point_1.z < point_2.z)
+        //                {
+        //                    temp = point_1.z;
+        //                    point_1.z = point_2.z;
+        //                    point_2.z = temp;
+        //                //    std::cout << "DEBUG changed points Z" << point_2 << " with " << point_1 << std::endl;
+        //                    continue;
+        //                }
+        //                if (point_1.y < point_2.y)
+        //                {
+        //                    temp = point_1.y;
+        //                    point_1.y = point_2.y;
+        //                    point_2.y = temp;
+        //              //      std::cout << "DEBUG changed points Y" << point_2 << " with " << point_1 << std::endl;
+        //                    continue;
+        //                }
+        //                if (point_1.x < point_2.x)
+        //                {
+        //                    temp = point_1.x;
+        //                    point_1.x = point_2.x;
+        //                    point_2.x = temp;
+        //                //    std::cout << "DEBUG changed points X" << point_2 << " with " << point_1 << std::endl;
+        //                    continue;
+
+        //                }
+        //            }
+
+        //            //            for (int i = 0 ; i < 2 ; i++ )
+        //            //                for (int j = 0 ; j < 2; j++ )
+        //            //                    for (int k = 0 ; k < 5 ; k++ )
+        //            //                        for (int a = 0 ; a < 2 ; a++ )
+        //            //                            for (int b = 0 ; b < 2 ; b++ )
+        //            //                                for (int c = 0 ; c < 5 ; c++ )
+        //            //                                    if (array[i][j][k] < array[a][b][c]){
+        //            //                                        temp = array[i][j][k];
+        //            //                                        array[i][j][k] = array[a][b][c];
+        //            //                                        array[a][b][c] = temp;}
+        //            //            for (int i = 0 ; i < 2 ; i++ )
+        //            //                for (int j = 0 ; j < 2 ; j++ )
+        //            //                    for (int k = 0 ; k < 5 ; k++ )
+        //            //                    {
+        //            //                        cout << array[i][j][k] << endl;
+        //            //                    }
+        //        }
+
+        std::cout << "DEBUG took " << tt.toc() << std::endl;
+        tt.tic();
+
+
+
+        for (int i = 0 ; i < labels.size() ; i++ )
+            std::cout << "Label #" << i << " " << labels.at(i) << std::endl;
+
+
+
+
+
 
     }
 

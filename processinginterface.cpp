@@ -208,11 +208,13 @@ void ProcessingInterface::pc_proc_thread_func()
                 {
                     if (executeOnce && camType == CameraType_t::CENTRAL)
                     {
-                        //   pointcloud->
                         executeOnce = false;
                         if (pointcloud->isOrganized())
                             euclideanConnectedComponentsOrganized(pointcloud);
-                        else std::cerr << "DEBUG not organized" << std::endl;
+                        else
+                        {
+                            euclideanConnectedComponentsUnorganized(pointcloud);
+                        }
                     }
                 }
 

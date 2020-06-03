@@ -213,8 +213,11 @@ public:
 #endif
         size_t i = 0;
         out.resize(in.size());
-
+#if PCL_CLOUD_ORGANIZED
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_WIDTH_DEPTH, RS_FRAME_HEIGHT_DEPTH));
+#else
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>(RS_FRAME_WIDTH_DEPTH*RS_FRAME_HEIGHT_DEPTH, 1));
+#endif
 
         while (in.size())
         {
@@ -233,25 +236,6 @@ public:
 private:
     camera_intrinsics_t* m_intr;
     camera_extrinsics_t* m_extr;
-
-//    void filterRegionDepthMat(cv::Mat& depthMat, ushort threshold_z)
-//    {
-//        ushort* data_ptr = (ushort*) depthMat.data;
-//        for (int i = 0; i<depthMat.rows; i++)
-//        {
-//            for (int j = 0; j < depthMat.cols; j++)
-//            {
-//                float z = static_cast<ushort>(*data_ptr);
-//            }
-//        }
-//    }
-//    // GLOBAL_REGION_X_MIN_M
-//    void connectedComponentsDepthMat(cv::Mat& depthMat)
-//    {
-//        GLOBAL_REGION_Z_MAX_M;
-//        //    distImage.convertTo()
-
-//    }
 
     void transformDepthMatToCloud(cv::Mat& depthMat, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, camera_intrinsics_t* intrinsics, camera_extrinsics_t* extrinsics, bool filterRegion = false)
     {

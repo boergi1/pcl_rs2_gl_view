@@ -258,6 +258,119 @@ public:
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
+
+
+
+    void doUnion(int a, int b, int* component)
+    {
+        //   cout << "doUnion a "<<a << " b "<<b<<endl;
+        // get the root component of a and b, and set the one's parent to the other
+        while (component[a] != a)
+            a = component[a];
+        while (component[b] != b)
+            b = component[b];
+        component[b] = a;
+    }
+
+    //    void unionCoords(int x, int y, int x2, int y2)
+    //    {
+    //     //   cout << "unionCoords x "<<x<<" y "<<y<<" x2 "<<x2<<" y2 "<<y2<<endl;
+    //        if (y2 < h && x2 < w && input[x][y] && input[x2][y2])
+    //            doUnion(x*h + y, x2*h + y2);
+    //    }
+
+    void euclideanUnionFind(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
+    {
+        float distanceThresholdMax = 8.0f;//0.75f;
+        float distanceThresholdMin = 0.0f;// 0.70f;
+        float radiusThreshold = 0.010f;
+
+        int w = cloud->width;
+        int h = cloud->height;
+        int array_size = w*h;
+
+        int component [array_size];
+        for (int i = 0; i < array_size; i++)
+            component[i] = i;
+
+        for (int x = 0; x < w; x++)
+            for (int y = 0; y < h; y++)
+            {
+                int x2 = x+1;
+                int y2 = y+1;
+
+                auto center_point = cloud->at(x,y);
+
+                if (center_point.z < distanceThresholdMin || center_point.z > distanceThresholdMax)
+                    continue;
+
+                if (x2 < w)
+                {
+
+                    //                if (x2 < w && (cloud->at(x,y).z > 0.0) && (cloud->at(x2,y).z > 0.0))
+                    //                    doUnion(x*h + y, x2*h + y, component);
+                    auto neighbor_point = cloud->at(x2,y);
+                    if (neighbor_point.z < distanceThresholdMin || neighbor_point.z > distanceThresholdMax)
+                        continue;
+                    if (euclideanDistance3D(&neighbor_point, &center_point) < radiusThreshold)
+                    {
+                        doUnion(x*h + y, x2*h + y, component);
+                    }
+
+                }
+                if (y2 < h)
+                {
+
+                    //                if (y2 < h  && (cloud->at(x,y).z > 0.0) && (cloud->at(x,y2).z > 0.0))
+                    //                    doUnion(x*h + y, x*h + y2, component);
+                    auto neighbor_point = cloud->at(x,y2);
+                    if (neighbor_point.z < distanceThresholdMin || neighbor_point.z > distanceThresholdMax)
+                        continue;
+                    if (euclideanDistance3D(&neighbor_point, &center_point) < radiusThreshold)
+                    {
+                        doUnion(x*h + y, x*h + y2, component);
+                    }
+
+                }
+                //   cout << "accessing X "<<x << " Y "<<y<<endl;
+                //                unionCoords(x, y, x+1, y);
+
+
+
+                //                unionCoords(x, y, x, y+1);
+
+            }
+
+        cv::Mat labelMat = cv::Mat::zeros(h,w,CV_8U);
+
+        // print the array
+        for (int x = 0; x < w; x++)
+        {
+            for (int y = 0; y < h; y++)
+            {
+                if (cloud->at(x,y).z == 0)
+                {
+                    labelMat.at<uint8_t>() = 0;
+                    //   cout << ' ';
+                //    std::cout << " " << -1 << " ";
+                    continue;
+                }
+                int c = x*h + y;
+                //      std::cout << "searching for root: " << c << endl;
+                while (component[c] != c) c = component[c];
+             //   std::cout << " " << c << " ";
+                labelMat.at<uint8_t>() = (float)c/(float)array_size*255.0;
+                //      std::cout << "root found: " << c << endl;
+                //     cout << (char)('a'+c);
+            }
+         //   std::cout << "\n";
+        }
+
+        std::cout << labelMat << std::endl;
+
+
+    }
+
     std::vector<TrackedObject*> euclideanConnectedComponentsOrganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
     {
         auto start = std::chrono::high_resolution_clock::now();
@@ -855,7 +968,7 @@ public:
 
             if (labels.at(i) != LabelType_t::UNIDENTIFIED) // only unidentified
                 continue;
-             //           std::cout << i+1 << " out of " << cloud->size() << std::endl;
+            //           std::cout << i+1 << " out of " << cloud->size() << std::endl;
             auto point_1 = cloud->at(i);
             if (point_1.z == 0.0)
             {

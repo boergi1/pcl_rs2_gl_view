@@ -210,10 +210,11 @@ void ProcessingInterface::pc_proc_thread_func()
                     {
                         executeOnce = false;
                         if (pointcloud->isOrganized())
-                            euclideanConnectedComponentsOrganized(pointcloud);
+                            euclideanUnionFind(pointcloud);
+                         //   euclideanConnectedComponentsOrganized(pointcloud);
                         else
                         {
-                            euclideanConnectedComponentsUnorganized(pointcloud);
+                            // euclideanConnectedComponentsUnorganized(pointcloud);
                         }
                     }
                 }

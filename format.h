@@ -56,7 +56,7 @@
 #define CONV_THREAD_POOL_SIZE 7
 #define CONV_SPLIT_DATA 0 // not yet implemented
 // PCL processing
-#define PCL_CLOUD_ORGANIZED 0
+#define PCL_CLOUD_ORGANIZED 1
 
 
 

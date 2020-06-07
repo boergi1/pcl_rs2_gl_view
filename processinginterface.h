@@ -258,18 +258,121 @@ public:
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
+    void recursive_dfs(int x, int y, int label, pcl::PointCloud<pcl::PointXYZ>::Ptr Cloud, cv::Mat& Labels)
+    {
+        std::cout << "recursive_dfs X" << x << " Y" << y << " L " << label <<  std::endl;
+        //     if (Labels.at<int32_t>(y,x) != LabelType_t::UNIDENTIFIED) return; // already identified
+        const int dx[] = {+1, 0, -1, 0};
+        const int dy[] = {0, +1, 0, -1};
+        float distanceThresholdMax = 0.76f;//0.75f;
+        float distanceThresholdMin = 0.70f;// 0.70f;
+        float radiusThreshold = 0.010f;
+
+
+        int w = Cloud->width;
+        int h = Cloud->height;
+        if ( (x == w) || (y == h) || x < 0 || (y < 0) ) return; // out of bounds
+
+        auto center_point = Cloud->at(x,y);
+        if ((center_point.z < distanceThresholdMin) || (center_point.z > distanceThresholdMax))
+        {
+            Labels.at<int32_t>(y,x) = LabelType_t::BACKGROUND;
+            std::cout << "background X" << x << " Y " << y << std::endl;
+            return;
+        }
+        //        else
+
+
+        Labels.at<int32_t>(y,x) = label;
+
+        for (int direction = 0; direction < 4; ++direction)
+        {
+            auto x2 = x + dx[direction];
+            auto y2 = y + dy[direction];
+            if ( (x2 == w) || (y2 == h) || x2 < 0 || (y2 < 0) ) continue; // out of bounds
+            auto neighbor_point = Cloud->at(x2,y2);
+
+            if ((neighbor_point.z < distanceThresholdMin) || (neighbor_point.z > distanceThresholdMax))
+            {
+                Labels.at<int32_t>(y2,x2) = LabelType_t::BACKGROUND;
+                continue;
+            }
+
+            bool inRange = euclideanDistance3D(&neighbor_point, &center_point) < radiusThreshold;
+
+            //            if (inRange)
+            //            {
+            //                std::cout << " in range X2:" << x2 << " Y2:" << y2 << std::endl;
+            //                recursive_dfs(x2, y2, label, Cloud, Labels);
+            //            }
+
+            //            if (inRange) // ?????????????
+            //                Labels.at<int32_t>(y2,x2) = label;
+            //            else recursive_dfs(x2, y2, label, Cloud, Labels);
+
+            if (inRange)
+            {
+                Labels.at<int32_t>(y2,x2) = label;
+                std::cout << " in range - X2:" << x2 << " Y2:" << y2 << std::endl;
+                continue;
+            }
+            if (Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
+            {
+                std::cout << " recursive call - X2:" << x2 << " Y2:" << y2 << std::endl;
+                recursive_dfs(x2, y2, label, Cloud, Labels);
+            }
+
+
+        }
+    }
+
+    void euclideanDepthFirstSearch(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
+    {
+        std::cout << "euclideanDepthFirstSearch" << std::endl;
+
+
+        int w = cloud->width;
+        int h = cloud->height;
+        cv::Mat labelMat = cv::Mat(h,w,CV_32S,cv::Scalar(LabelType_t::UNIDENTIFIED));
+        //  cv::Mat labelMat = cv::Mat::ones(h,w,CV_32S);
+
+        int32_t current_label = LabelType_t::OBJECTS;
+
+        for (int x = 0; x < w; x++)
+            for (int y = 0; y < h; y++)
+            {
+                std::cout << "dfs loop X:" << x << " Y:" << y << " L:" << labelMat.at<int32_t>(y,x) << std::endl;
+                if (labelMat.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED)
+                    recursive_dfs(x, y, current_label++, cloud, labelMat);
+            }
+
+        if ((true))
+        {
+            cv::Mat show;
+            show = cv::Mat(labelMat.rows, labelMat.cols, CV_8U);
+            double scale = (1.0 / (double)w*h) * (double)std::numeric_limits<uint8_t>::max();
+            labelMat.convertTo(show, CV_8U, scale);
+              cout << show << endl;
+            cv::applyColorMap( show, show, cv::COLORMAP_JET);
+            cv::imshow("euclideanDepthFirstSearch", show);
+            cv::waitKey(0);
+        }
+
+    }
+
 
 
 
     void doUnion(int a, int b, int* component)
     {
-        //   cout << "doUnion a "<<a << " b "<<b<<endl;
+        // cout << "doUnion a "<<a << " b "<<b<<endl;
         // get the root component of a and b, and set the one's parent to the other
         while (component[a] != a)
             a = component[a];
         while (component[b] != b)
             b = component[b];
         component[b] = a;
+        //   cout << b << " is root of "<< a <<endl;
     }
 
     //    void unionCoords(int x, int y, int x2, int y2)
@@ -281,8 +384,9 @@ public:
 
     void euclideanUnionFind(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
     {
-        float distanceThresholdMax = 8.0f;//0.75f;
-        float distanceThresholdMin = 0.0f;// 0.70f;
+        std::cout << "euclideanUnionFind" << std::endl;
+        float distanceThresholdMax = 0.76f;//0.75f;
+        float distanceThresholdMin = 0.70f;// 0.70f;
         float radiusThreshold = 0.010f;
 
         int w = cloud->width;
@@ -299,76 +403,68 @@ public:
                 int x2 = x+1;
                 int y2 = y+1;
 
+                auto current_idx = x*h + y;
                 auto center_point = cloud->at(x,y);
 
                 if (center_point.z < distanceThresholdMin || center_point.z > distanceThresholdMax)
+                {
+                    component[current_idx] = 0;
                     continue;
-
+                }
                 if (x2 < w)
                 {
+                    int neighbor_idx = x2*h + y;
+                    pcl::PointXYZ neighbor_point = cloud->at(x2,y);
 
-                    //                if (x2 < w && (cloud->at(x,y).z > 0.0) && (cloud->at(x2,y).z > 0.0))
-                    //                    doUnion(x*h + y, x2*h + y, component);
-                    auto neighbor_point = cloud->at(x2,y);
                     if (neighbor_point.z < distanceThresholdMin || neighbor_point.z > distanceThresholdMax)
-                        continue;
-                    if (euclideanDistance3D(&neighbor_point, &center_point) < radiusThreshold)
                     {
-                        doUnion(x*h + y, x2*h + y, component);
+                        component[neighbor_idx] = 0;
+                        continue;
                     }
+                    if (euclideanDistance3D(&neighbor_point, &center_point) < radiusThreshold)
+                        doUnion(current_idx, neighbor_idx, component);
 
                 }
                 if (y2 < h)
                 {
+                    int neighbor_idx = x*h + y2;
+                    pcl::PointXYZ neighbor_point = cloud->at(x,y2);
 
-                    //                if (y2 < h  && (cloud->at(x,y).z > 0.0) && (cloud->at(x,y2).z > 0.0))
-                    //                    doUnion(x*h + y, x*h + y2, component);
-                    auto neighbor_point = cloud->at(x,y2);
                     if (neighbor_point.z < distanceThresholdMin || neighbor_point.z > distanceThresholdMax)
-                        continue;
-                    if (euclideanDistance3D(&neighbor_point, &center_point) < radiusThreshold)
                     {
-                        doUnion(x*h + y, x*h + y2, component);
+                        component[neighbor_idx] = 0;
+                        continue;
                     }
-
+                    if (euclideanDistance3D(&neighbor_point, &center_point) < radiusThreshold)
+                        doUnion(current_idx, neighbor_idx, component);
                 }
-                //   cout << "accessing X "<<x << " Y "<<y<<endl;
-                //                unionCoords(x, y, x+1, y);
-
-
-
-                //                unionCoords(x, y, x, y+1);
-
             }
 
-        cv::Mat labelMat = cv::Mat::zeros(h,w,CV_8U);
+        cv::Mat labelMat = cv::Mat::zeros(h,w,CV_32S);
+        // cv::Mat labelMat = cv::Mat_<int32_t>(h,w,-1);
 
-        // print the array
+        // fill labels
         for (int x = 0; x < w; x++)
         {
             for (int y = 0; y < h; y++)
             {
-                if (cloud->at(x,y).z == 0)
-                {
-                    labelMat.at<uint8_t>() = 0;
-                    //   cout << ' ';
-                //    std::cout << " " << -1 << " ";
-                    continue;
-                }
                 int c = x*h + y;
-                //      std::cout << "searching for root: " << c << endl;
+                if (c == component[c]) cout << "Parent root found: " << c << endl;
                 while (component[c] != c) c = component[c];
-             //   std::cout << " " << c << " ";
-                labelMat.at<uint8_t>() = (float)c/(float)array_size*255.0;
-                //      std::cout << "root found: " << c << endl;
-                //     cout << (char)('a'+c);
+                labelMat.at<int32_t>(y,x) = c;
             }
-         //   std::cout << "\n";
         }
 
-        std::cout << labelMat << std::endl;
-
-
+        if ((false))
+        {
+            cv::Mat show;
+            show = cv::Mat(labelMat.rows, labelMat.cols, CV_8U);
+            double scale = (1.0 / (double)array_size) * (double)std::numeric_limits<uint8_t>::max();
+            labelMat.convertTo(show, CV_8U, scale);
+            cv::applyColorMap( show, show, cv::COLORMAP_HOT);
+            cv::imshow("euclideanUnionFind", show);
+            cv::waitKey(0);
+        }
     }
 
     std::vector<TrackedObject*> euclideanConnectedComponentsOrganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)

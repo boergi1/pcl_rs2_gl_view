@@ -260,30 +260,33 @@ public:
 
     void recursive_dfs(int x, int y, int label, pcl::PointCloud<pcl::PointXYZ>::Ptr Cloud, cv::Mat& Labels)
     {
-        std::cout << "recursive_dfs X" << x << " Y" << y << " L " << label <<  std::endl;
-        //     if (Labels.at<int32_t>(y,x) != LabelType_t::UNIDENTIFIED) return; // already identified
+        //   std::cout << "recursive_dfs X" << x << " Y" << y << " L " << label <<  std::endl;
+        if (Labels.at<int32_t>(y,x) != LabelType_t::UNIDENTIFIED) return; // "<" or "!=" ???
+
+        // r d l u
         const int dx[] = {+1, 0, -1, 0};
         const int dy[] = {0, +1, 0, -1};
+        // r d l u rd ld lu ru
+        //        const int dx[] = {+1, 0, -1, 0, +1, -1, -1, +1};
+        //        const int dy[] = {0, +1, 0, -1, +1, +1, -1, -1};
+        // r rd d ld l lu u ru
         float distanceThresholdMax = 0.76f;//0.75f;
         float distanceThresholdMin = 0.70f;// 0.70f;
         float radiusThreshold = 0.010f;
-
-
         int w = Cloud->width;
         int h = Cloud->height;
+
         if ( (x == w) || (y == h) || x < 0 || (y < 0) ) return; // out of bounds
 
         auto center_point = Cloud->at(x,y);
         if ((center_point.z < distanceThresholdMin) || (center_point.z > distanceThresholdMax))
         {
             Labels.at<int32_t>(y,x) = LabelType_t::BACKGROUND;
-            std::cout << "background X" << x << " Y " << y << std::endl;
+            //     std::cout << "background X" << x << " Y " << y << std::endl;
             return;
         }
-        //        else
 
-
-        Labels.at<int32_t>(y,x) = label;
+        //   Labels.at<int32_t>(y,x) = label;
 
         for (int direction = 0; direction < 4; ++direction)
         {
@@ -312,15 +315,50 @@ public:
 
             if (inRange)
             {
-                Labels.at<int32_t>(y2,x2) = label;
-                std::cout << " in range - X2:" << x2 << " Y2:" << y2 << std::endl;
-                continue;
+                if (Labels.at<int32_t>(y,x) > LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
+                {
+                    Labels.at<int32_t>(y2,x2) = Labels.at<int32_t>(y,x);
+                    //   std::cout << " recursive call with unidentified neighbor - X2:" << x2 << " Y2:" << y2 << " L:" << Labels.at<int32_t>(y,x) << std::endl;
+                    //   recursive_dfs(x2, y2, Labels.at<int32_t>(y,x), Cloud, Labels);
+                    continue;
+                }
+
+                if (Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
+                {
+                    Labels.at<int32_t>(y,x) = label;
+                    //      Labels.at<int32_t>(y2,x2) = label;
+                    std::cout << " recursive call with unidentified neighbor and center - X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
+                    recursive_dfs(x2, y2, label, Cloud, Labels);
+                    continue;
+                }
+
+                if (Labels.at<int32_t>(y,x) > LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) > LabelType_t::UNIDENTIFIED)
+                {
+                    //                    if (Labels.at<int32_t>(y,x) == Labels.at<int32_t>(y2,x2))
+                    //                        continue;
+
+                    //                    if (Labels.at<int32_t>(y,x) < Labels.at<int32_t>(y2,x2))
+                    //                        Labels.at<int32_t>(y2,x2) = Labels.at<int32_t>(y,x);
+                    //                    else
+                    //                        Labels.at<int32_t>(y,x) = Labels.at<int32_t>(y2,x2);
+
+                }
+
+                //     std::cout << " in range - X2:" << x2 << " Y2:" << y2 << std::endl;
+                //   continue;
             }
-            if (Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
+            else
             {
-                std::cout << " recursive call - X2:" << x2 << " Y2:" << y2 << std::endl;
-                recursive_dfs(x2, y2, label, Cloud, Labels);
+                //                std::cout << " recursive call - X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
+                //                recursive_dfs(x2, y2, label, Cloud, Labels);
+                //                if (Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
+                //                {
+                //                    std::cout << " recursive call with out of range neighbor - X2:" << x2 << " Y2:" << y2 << std::endl;
+                //                    recursive_dfs(x2, y2, label, Cloud, Labels);
+                //                }
             }
+
+
 
 
         }
@@ -349,10 +387,10 @@ public:
         if ((true))
         {
             cv::Mat show;
+            //     cout << "Labels:" << endl << labelMat << endl;
             show = cv::Mat(labelMat.rows, labelMat.cols, CV_8U);
-            double scale = (1.0 / (double)w*h) * (double)std::numeric_limits<uint8_t>::max();
+            double scale = (1.0/(double)(w*h)) * (double)std::numeric_limits<uint8_t>::max();
             labelMat.convertTo(show, CV_8U, scale);
-              cout << show << endl;
             cv::applyColorMap( show, show, cv::COLORMAP_JET);
             cv::imshow("euclideanDepthFirstSearch", show);
             cv::waitKey(0);

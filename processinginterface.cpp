@@ -75,10 +75,10 @@ void ProcessingInterface::pc_proc_thread_func()
     size_t max_times = 100;
     std::deque<long> proc_times;
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
+//    pcl::PointCloud<pcl::PointXYZ>::Ptr pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr pc_global_extr(new pcl::PointCloud<pcl::PointXYZ>());
-    pcl::PointCloud<pcl::PointXYZ>::Ptr pc_plane_extr(new pcl::PointCloud<pcl::PointXYZ>());
+//    pcl::PointCloud<pcl::PointXYZ>::Ptr pc_global_extr(new pcl::PointCloud<pcl::PointXYZ>());
+//    pcl::PointCloud<pcl::PointXYZ>::Ptr pc_plane_extr(new pcl::PointCloud<pcl::PointXYZ>());
 
 
 #if PCL_FILTER_GLOBAL_REGION_ENABLED
@@ -191,12 +191,12 @@ void ProcessingInterface::pc_proc_thread_func()
                 idle = false;
                 auto camType = cloudqueue->getCameraType();
                 auto cloudt = cloudqueue->getCloudT();
-                pointcloud = std::get<1>(cloudt);
+                auto pointcloud = (std::get<1>(cloudt));
                 auto ts = std::get<1>(cloudt);
                 auto ctr = std::get<2>(cloudt);
 #if (VERBOSE > 0)
-                std::cout << "(ProcessingInterface) PointCloud received from camera " << camType << " (" << ctr << "), organized: " << pointcloud->isOrganized()
-                          << " size: " << pointcloud->points.size() << std::endl;
+                std::cout << "(ProcessingInterface) PointCloud received from camera " << camType << " (" << ctr
+                          << ") size: " << pointcloud->size() << std::endl;
 #endif
 
 #if PCL_VIEWER
@@ -205,21 +205,20 @@ void ProcessingInterface::pc_proc_thread_func()
                 m_viewer_mtx.unlock();
 #endif
 
-                if ((true))
+                if ((false))
                 {
                     if (executeOnce && camType == CameraType_t::CENTRAL)
                     {
                         executeOnce = false;
-                        if (pointcloud->isOrganized())
+
                             euclideanDepthFirstSearch(pointcloud);
                             //euclideanUnionFind(pointcloud);
                          //   euclideanConnectedComponentsOrganized(pointcloud);
-                        else
-                        {
-                            // euclideanConnectedComponentsUnorganized(pointcloud);
-                        }
+
                     }
                 }
+
+                delete pointcloud;
 
 
             }
@@ -366,7 +365,7 @@ void ProcessingInterface::pc_proc_thread_func()
 
         if (idle)
         {
-#if VERBOSE
+#if (VERBOSE > 2)
             std::cerr << "(ProcessingInterface) Idle" << std::endl;
 #endif
             std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_PCL_POLL_NS));
@@ -434,7 +433,7 @@ CloudQueue::CloudQueue(CameraType_t CameraType, std::string name){
     m_name = name;
 }
 
-void CloudQueue::addCloudT(std::tuple<unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long> cloud_tuple)
+void CloudQueue::addCloudT(std::tuple<unsigned long long, std::vector< Eigen::Vector3d >*, long long> cloud_tuple)
 {
     m_mtx.lock();
     m_cqueue.push_back(cloud_tuple);
@@ -448,7 +447,7 @@ void CloudQueue::addCloudT(std::tuple<unsigned long long, pcl::PointCloud<pcl::P
     m_mtx.unlock();
 }
 
-std::tuple<unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long> CloudQueue::getCloudT()
+std::tuple<unsigned long long, std::vector< Eigen::Vector3d >*, long long> CloudQueue::getCloudT()
 {
     if (m_cqueue.size())
     {
@@ -466,7 +465,7 @@ std::tuple<unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long> C
     }
 }
 
-const std::tuple<unsigned long long, pcl::PointCloud<pcl::PointXYZ>::Ptr, long long> CloudQueue::readCloudT()
+const std::tuple<unsigned long long, std::vector< Eigen::Vector3d >*, long long> CloudQueue::readCloudT()
 {
     if (m_cqueue.size())
     {

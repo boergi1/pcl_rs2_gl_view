@@ -135,6 +135,7 @@ void Rs2_PCL_Converter::converter_thread_func()
 
     //    m_active = true;
     while (m_active) {
+      //  std::cerr << "DEBUG Converter" << std::endl;
         bool idle = true;
         // Read from RealSense2 Devices and generate tasks
         for (size_t i = 0; i < m_ref_to_depth_queues->size(); i++)
@@ -168,8 +169,8 @@ void Rs2_PCL_Converter::converter_thread_func()
                 FrameToCloudTask* task_f2c = new FrameToCloudTask(queue_depth->getCameraType(), queue_depth->getIntrinsics(), &m_extrinsics.at(i));
                 task_f2c->setTaskType(TaskType_t::TSKTYPE_Frame2Cloud);
                 //  task_f2c->setTaskId(queue_depth->getCameraType());
+                task_f2c->in.push_back(std::make_tuple(depth_frame.get_frame_number(), depth_mat.clone(), ts));
                 task_f2c->setTaskStatus(BaseTask::WORK_TO_DO);
-                task_f2c->in.push_back(std::make_tuple(depth_frame.get_frame_number(), depth_mat, ts));
                 this->addTask(task_f2c);
 
 
@@ -179,7 +180,7 @@ void Rs2_PCL_Converter::converter_thread_func()
                     if ( queue_depth->getCameraType() == matqueue_depth->getCameraType())
                     {
 
-                        matqueue_depth->addMatT(std::make_tuple(depth_frame.get_frame_number(), depth_mat, ts));
+                        matqueue_depth->addMatT(std::make_tuple(depth_frame.get_frame_number(), depth_mat.clone(), ts));
 #if (VERBOSE > 1)
                         std::cout << "(Converter) Added Depth frame to MatQueue (" << depth_frame.get_frame_number() << ")" << std::endl;
 #endif
@@ -366,7 +367,7 @@ void Rs2_PCL_Converter::converter_thread_func()
         }
         if (idle)
         {
-#if VERBOSE
+#if (VERBOSE > 2)
             std::cerr << "(Converter) Idle" << std::endl;
 #endif
             std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_CONV_POLL_NS));

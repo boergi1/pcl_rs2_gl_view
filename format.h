@@ -7,7 +7,7 @@
 #define PROC_PIPE_PC_ENABLED 0
 #define PROC_PIPE_MAT_ENABLED 1
 // Verbosity level
-#define VERBOSE 0
+#define VERBOSE 2
 // Makros
 #define degreesToRadians(angleDegrees) ((angleDegrees) * M_PI / 180.0)
 #define radiansToDegrees(angleRadians) ((angleRadians) * 180.0 / M_PI)
@@ -86,7 +86,7 @@
 #define CV_REF_SIZE_MM 26
 
 // Toggle viewers
-#define PCL_VIEWER 1
+#define PCL_VIEWER 0
 #define IMSHOW_CV 1
 
 #define GL_DRAW_POINTCLOUD 0

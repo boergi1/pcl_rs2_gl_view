@@ -116,7 +116,7 @@ public:
         m_fqueue.push_back(frame);
         if (m_fqueue.size() > QUE_SIZE_RS2FRAMES)
         {
-            std::cerr << "(FrameQueue) Too many frames in queue " << m_camtype << " " << m_name << std::endl;
+          //  std::cerr << "(FrameQueue) Too many frames in queue " << m_camtype << " " << m_name << std::endl;
             m_fqueue.pop_front();
         }
         m_mtx.unlock();

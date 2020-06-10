@@ -47,6 +47,8 @@
 #include <mutex>
 #include <chrono>
 
+
+
 /* TODO: Add class for each device with its own processing thread*/
 
 class CloudQueue
@@ -204,6 +206,8 @@ private:
 class ProcessingInterface // todo: add one thread for each camera
 {
 private:
+
+
     bool m_active;
     //    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> m_clouds_buffer;
     pcl::PointCloud<pcl::PointXYZ>::Ptr m_proc_cloud = nullptr; // todo mutex this
@@ -222,7 +226,16 @@ private:
     std::mutex m_viewer_mtx;
 #endif
 
+    // Segmentation variables
+    const int _dx_n8[8] = {+1, +1, 0, -1, -1, -1, 0, +1};
+    const int _dy_n8[8] = {0, +1, +1, +1, 0, -1, -1, -1};
+    float _distanceThresholdMax = 0.76f;//0.75f;
+    float _distanceThresholdMin = 0.70f;// 0.70f;
+    float _radiusThreshold = 0.010f;
+
     void pc_proc_thread_func();
+
+
 
 public:
     ProcessingInterface(std::vector<CameraType_t> device_count);
@@ -264,25 +277,22 @@ public:
         if (Labels.at<int32_t>(y,x) < LabelType_t::UNIDENTIFIED) return; // "<" or "!=" ???
 
         // r d l u
-        const int dx_n4[] = {+1, 0, -1, 0};
-        const int dy_n4[] = {0, +1, 0, -1};
+        //        const int dx_n4[] = {+1, 0, -1, 0};
+        //        const int dy_n4[] = {0, +1, 0, -1};
         // r d l u rd ld lu ru
         //                const int dx[] = {+1, 0, -1, 0, +1, -1, -1, +1};
         //                const int dy[] = {0, +1, 0, -1, +1, +1, -1, -1};
         // r rd d ld l lu u ru
-        const int dx_n8[] = {+1, +1, 0, -1, -1, -1, 0, +1};
-        const int dy_n8[] = {0, +1, +1, +1, 0, -1, -1, -1};
 
-        float distanceThresholdMax = 0.76f;//0.75f;
-        float distanceThresholdMin = 0.70f;// 0.70f;
-        float radiusThreshold = 0.010f;
-        int w = Cloud->width;
-        int h = Cloud->height;
+
+
+        static int w = Cloud->width;
+        static int h = Cloud->height;
 
         if ( (x == w) || (y == h) || x < 0 || (y < 0) ) return; // out of bounds
 
         auto center_point = Cloud->at(x,y);
-        if ((center_point.z < distanceThresholdMin) || (center_point.z > distanceThresholdMax))
+        if ((Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED) && ((center_point.z < _distanceThresholdMin) || (center_point.z > _distanceThresholdMax)))
         {
             Labels.at<int32_t>(y,x) = LabelType_t::BACKGROUND;
             //     std::cout << "background X" << x << " Y " << y << std::endl;
@@ -290,92 +300,79 @@ public:
         }
 
         //   Labels.at<int32_t>(y,x) = label;
-        bool previousIsBackground = false;
-        bool backgroundFound = false;
-        bool validFound = false;
+        static bool previousIsInvalid = false;
+        //  static int current_label = Labels.at<int32_t>(y,x);
+
 
         for (int direction = 0; direction < 8; ++direction)
         {
-            auto x2 = x + dx_n8[direction];
-            auto y2 = y + dy_n8[direction];
+
+            int x2 = x + _dx_n8[direction];
+            int y2 = y + _dy_n8[direction];
             if ( (x2 == w) || (y2 == h) || x2 < 0 || (y2 < 0) ) continue; // out of bounds
+
+            cout << "Neighborhood #" << direction << " X:" << x << " Y:" << y << " X2:" << x2 << " Y2:" << y2 << endl;
+
             auto neighbor_point = Cloud->at(x2,y2);
 
-            if ((neighbor_point.z < distanceThresholdMin) || (neighbor_point.z > distanceThresholdMax))
+            if (/*(Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED) &&*/ ((neighbor_point.z < _distanceThresholdMin) || (neighbor_point.z > _distanceThresholdMax)))
             {
+
                 Labels.at<int32_t>(y2,x2) = LabelType_t::BACKGROUND;
                 if (direction == 7)
                 {
-                 //   cout << "DEBUG Test RU:" << Labels.at<int32_t>(y2,x2) << " R:"<< Labels.at<int32_t>(y+dy_n8[0],x+dx_n8[0]) << endl;
-                    if  (Labels.at<int32_t>(y+dy_n8[0],x+dx_n8[0] != LabelType_t::BACKGROUND))
+                    if  (Labels.at<int32_t>(y+_dy_n8[0],x+_dx_n8[0]) != LabelType_t::BACKGROUND)
                     {
-                        std::cout << " recursive call with edge neighbor - X2:" << x+dx_n8[0] << " Y2:" << y+dy_n8[0] << " L:" << Labels.at<int32_t>(y,x) << std::endl;
-                        recursive_dfs(x+dx_n8[0], y+dy_n8[0], Labels.at<int32_t>(y,x), Cloud, Labels);
+                        std::cout << " recursive call with edge neighbor - X2:" << x+_dx_n8[0] << " Y2:" << y+_dy_n8[0] << " L:" << Labels.at<int32_t>(y,x) << std::endl;
+                        recursive_dfs(x+_dx_n8[0], y+_dy_n8[0], Labels.at<int32_t>(y,x), Cloud, Labels);
                     }
                 }
-                backgroundFound = true;
-                previousIsBackground = true;
+
+                previousIsInvalid = true;
                 continue;
             }
-
-            //       bool inRange = euclideanDistance3D(&neighbor_point, &center_point) < radiusThreshold;
-
-            //            if (inRange)
-            //            {
-            //                std::cout << " in range X2:" << x2 << " Y2:" << y2 << std::endl;
-            //                recursive_dfs(x2, y2, label, Cloud, Labels);
-            //            }
-
-            //            if (inRange) // ?????????????
-            //                Labels.at<int32_t>(y2,x2) = label;
-            //            else recursive_dfs(x2, y2, label, Cloud, Labels);
-
-
-
-
-
-            if (euclideanDistance3D(&neighbor_point, &center_point) < radiusThreshold)
+            if (euclideanDistance3D(&neighbor_point, &center_point) < _radiusThreshold)
             {
-                validFound = true;
+                std::cout << "DEBUG in range, previousInvalid: "<< previousIsInvalid << endl;
+
                 if (Labels.at<int32_t>(y,x) > LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
                 {
                     cout << "Center: identified; Neighbor: unidentified; X2:" << x2 << " Y2:" << y2 << endl;
 
                     Labels.at<int32_t>(y2,x2) = Labels.at<int32_t>(y,x);
-                    if (previousIsBackground)
+                    if (previousIsInvalid)
                     {
-                        previousIsBackground = false;
+                        previousIsInvalid = false;
                         std::cout << " recursive call with unidentified neighbor - X2:" << x2 << " Y2:" << y2 << " L:" << Labels.at<int32_t>(y,x) << std::endl;
                         recursive_dfs(x2, y2, Labels.at<int32_t>(y,x), Cloud, Labels);
                     }
-
-
-                    //   std::cout << " recursive call with unidentified neighbor - X2:" << x2 << " Y2:" << y2 << " L:" << Labels.at<int32_t>(y,x) << std::endl;
-                    //   recursive_dfs(x2, y2, Labels.at<int32_t>(y,x), Cloud, Labels);
-                    continue;
                 }
 
-                if (Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
+                else if (Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
                 {
                     cout << "Center: unidentified; Neighbor: unidentified; X2:" << x2 << " Y2:" << y2 << endl;
 
                     Labels.at<int32_t>(y,x) = label;
                     Labels.at<int32_t>(y2,x2) = label;
-                    if (previousIsBackground)
+                    if (previousIsInvalid)
                     {
-                        previousIsBackground = false;
+                        previousIsInvalid = false;
                         std::cout << " recursive call with unidentified neighbor and center - X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
                         recursive_dfs(x2, y2, label, Cloud, Labels);
                     }
-
-                    //                    std::cout << " recursive call with unidentified neighbor and center - X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
-                    //                    recursive_dfs(x2, y2, label, Cloud, Labels);
-                    continue;
                 }
 
-                if (Labels.at<int32_t>(y,x) > LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) > LabelType_t::UNIDENTIFIED)
+                else if (Labels.at<int32_t>(y,x) > LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) > LabelType_t::UNIDENTIFIED)
                 {
-                    previousIsBackground = false;
+
+                    cout << "Center: identified; Neighbor: identified; X2:" << x2 << " Y2:" << y2 << endl;
+                    if (previousIsInvalid)
+                    {
+                        previousIsInvalid = false;
+                        std::cout << " recursive call with identified neighbor and center - X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
+                        recursive_dfs(x2, y2, Labels.at<int32_t>(y,x), Cloud, Labels);
+                    }
+
                     if ((false))
                     {
                         if (Labels.at<int32_t>(y,x) == Labels.at<int32_t>(y2,x2))
@@ -389,24 +386,12 @@ public:
                     }
 
                 }
-
-
-
-
-
-
-                //     std::cout << " in range - X2:" << x2 << " Y2:" << y2 << std::endl;
-                //   continue;
             }
             else
             {
-                //                std::cout << " recursive call - X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
-                //                recursive_dfs(x2, y2, label, Cloud, Labels);
-                //                if (Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
-                //                {
-                //                    std::cout << " recursive call with out of range neighbor - X2:" << x2 << " Y2:" << y2 << std::endl;
-                //                    recursive_dfs(x2, y2, label, Cloud, Labels);
-                //                }
+                std::cout << "DEBUG out of range" << endl;
+                previousIsInvalid = true;
+             //   continue;
             }
 
 
@@ -414,49 +399,6 @@ public:
 
         }
 
-
-        if ((false))
-        {
-            if (backgroundFound && validFound)
-            {
-                cout << "Edge pixel detected" << endl;
-                //            if (Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED)
-                //                cerr << "Edge pixel invalid " << x << " " << y << endl;
-                // Edge pixel detected
-                for (int direction = 0; direction < 4; ++direction)
-                {
-                    auto x2 = x + dx_n4[direction];
-                    auto y2 = y + dy_n4[direction];
-                    if ( (x2 == w) || (y2 == h) || x2 < 0 || (y2 < 0) ) continue; // out of bounds
-                    cout << "Edge loop 1; X2:" << x2 << " Y2:" << y2 << endl;
-
-                    // Search for the valid neighbor
-                    if (Labels.at<int32_t>(y2,x2) == Labels.at<int32_t>(y,x))
-                    {
-                        //       Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED;
-
-                        for (int direction = 0; direction < 8; ++direction)
-                        {
-                            auto x3 = x2 + dx_n8[direction];
-                            auto y3 = y2 + dy_n8[direction];
-                            if ( (x3 == w) || (y3 == h) || x3 < 0 || (y3 < 0) ) continue; // out of bounds
-                            cout << "Edge loop 2; X3:" << x3 << " Y3:" << y3 << endl;
-                            // Search for a background neighbor
-                            if (Labels.at<int32_t>(y3,x3) == LabelType_t::BACKGROUND)
-                            {
-                                // Edge detected
-                                std::cout << " recursive call edge test - X2:" << x2 << " Y2:" << y2<<" X3:" << x3 << " Y3:" << y3 << std::endl;
-                                //    recursive_dfs(x2, y2, Labels.at<int32_t>(y,x), Cloud, Labels);
-                                break;
-                            }
-                        }
-
-                        break;
-                    }
-                }
-
-            }
-        }
 
 
     }

@@ -5,6 +5,7 @@ ProcessingInterface::ProcessingInterface(std::vector<CameraType_t> device_types)
     : m_pcl_viewer("Cloud Viewer")
     #endif
 {
+
     for (auto& camtype : device_types)
     {
         //#if PROC_PIPE_PC_ENABLED

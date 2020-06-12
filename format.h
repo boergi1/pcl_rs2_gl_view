@@ -3,11 +3,11 @@
 
 #include <iomanip>
 
+// Verbosity level
+#define VERBOSE 2
 // Global settings
 #define PROC_PIPE_PC_ENABLED 0
 #define PROC_PIPE_MAT_ENABLED 1
-// Verbosity level
-#define VERBOSE 2
 // Makros
 #define degreesToRadians(angleDegrees) ((angleDegrees) * M_PI / 180.0)
 #define radiansToDegrees(angleRadians) ((angleRadians) * 180.0 / M_PI)
@@ -25,9 +25,9 @@
 #define RS_EMITTER_ENABLED 1.f
 #define RS_EMITTER_POWER 1.f
 
-#define RS_FRAME_WIDTH_DEPTH 1280 //1280 //640
-#define RS_FRAME_HEIGHT_DEPTH 720 //720 //480
-#define RS_FRAME_RATE_DEPTH 30 //15 //30
+#define RS_FRAME_WIDTH_DEPTH 1280 // 848
+#define RS_FRAME_HEIGHT_DEPTH 720 // 480
+#define RS_FRAME_RATE_DEPTH 6 // 6,15,30,60,90
 
 #define RS_FRAME_PERIOD_MS 1000/RS_FRAME_RATE_DEPTH
 #define RS_FRAME_PERIOD_NS 1000000000/RS_FRAME_RATE_DEPTH
@@ -37,20 +37,19 @@
 
 
 // Converter
-//#define CONV_RS_ROTATION_AXIS "y" // todo: init t matrix in converter constructor
 #define CONV_RS_ROTATION_AXES "yxz"
 
 #define TRAN_FRONT_TO_CENTRAL_X_M 0.0
-#define TRAN_FRONT_TO_CENTRAL_Y_M -0.020
-#define TRAN_FRONT_TO_CENTRAL_Z_M -0.010
+#define TRAN_FRONT_TO_CENTRAL_Y_M 0.0//-0.020
+#define TRAN_FRONT_TO_CENTRAL_Z_M 0.0//-0.010
 #define ROT_FRONT_TO_CENTRAL_ANG_X 0.0
-#define ROT_FRONT_TO_CENTRAL_ANG_Y -45.0
+#define ROT_FRONT_TO_CENTRAL_ANG_Y 0.0//-45.0
 #define ROT_FRONT_TO_CENTRAL_ANG_Z 0.0
 #define TRAN_REAR_TO_CENTRAL_X_M 0.0
-#define TRAN_REAR_TO_CENTRAL_Y_M 0.020
-#define TRAN_REAR_TO_CENTRAL_Z_M -0.010
+#define TRAN_REAR_TO_CENTRAL_Y_M 0.0//0.020
+#define TRAN_REAR_TO_CENTRAL_Z_M 0.0//-0.010
 #define ROT_REAR_TO_CENTRAL_ANG_X 0.0
-#define ROT_REAR_TO_CENTRAL_ANG_Y 45.0
+#define ROT_REAR_TO_CENTRAL_ANG_Y 0.0
 #define ROT_REAR_TO_CENTRAL_ANG_Z 0.0
 
 #define CONV_THREAD_POOL_SIZE 7

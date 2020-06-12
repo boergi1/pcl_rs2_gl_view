@@ -75,10 +75,10 @@ void ProcessingInterface::pc_proc_thread_func()
     size_t max_times = 100;
     std::deque<long> proc_times;
 
-//    pcl::PointCloud<pcl::PointXYZ>::Ptr pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
+    //    pcl::PointCloud<pcl::PointXYZ>::Ptr pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
 
-//    pcl::PointCloud<pcl::PointXYZ>::Ptr pc_global_extr(new pcl::PointCloud<pcl::PointXYZ>());
-//    pcl::PointCloud<pcl::PointXYZ>::Ptr pc_plane_extr(new pcl::PointCloud<pcl::PointXYZ>());
+    //    pcl::PointCloud<pcl::PointXYZ>::Ptr pc_global_extr(new pcl::PointCloud<pcl::PointXYZ>());
+    //    pcl::PointCloud<pcl::PointXYZ>::Ptr pc_plane_extr(new pcl::PointCloud<pcl::PointXYZ>());
 
 
 #if PCL_FILTER_GLOBAL_REGION_ENABLED
@@ -111,12 +111,12 @@ void ProcessingInterface::pc_proc_thread_func()
     seg_vertical_axis << 0, 0, 1; // z
 #endif
 
-    bool savepcd = true;
+    bool savepcd = false;
     bool executeOnce = true;
 
     while (m_active)
     {
-#if (VERBOSE > 0)
+#if VERBOSE
         auto proc_start = std::chrono::high_resolution_clock::now();
 #endif
         bool idle = true;
@@ -144,7 +144,8 @@ void ProcessingInterface::pc_proc_thread_func()
                     cv::minMaxLoc(mat_depth, &min, &max);
                     auto test = std::numeric_limits<unsigned short>::max();
                     double scale = test / max;
-                    //  cv::imshow("depth "+std::to_string(camType), mat_depth*scale);
+                    cv::imshow("depth "+std::to_string(camType), mat_depth*scale);
+                    // cv::waitKey(1);
                 }
 
                 if ((false))
@@ -179,7 +180,7 @@ void ProcessingInterface::pc_proc_thread_func()
             }
         }
 #endif
-        //    cv::waitKey(1);
+        //  cv::waitKey(1);
 #endif
 
 
@@ -200,20 +201,76 @@ void ProcessingInterface::pc_proc_thread_func()
 #endif
 
 #if PCL_VIEWER
-                m_viewer_mtx.lock();
-                m_viewer_clouds.at(i) = pointcloud->makeShared();
-                m_viewer_mtx.unlock();
+                if (camType == CameraType_t::REAR)
+                {
+                    pcl::PointCloud <pcl::PointXYZ>::Ptr pcl_cloud (new pcl::PointCloud <pcl::PointXYZ>(RS_FRAME_WIDTH_DEPTH,RS_FRAME_HEIGHT_DEPTH));
+                    for (size_t y=0;y<pcl_cloud->height;y++)
+                        for (size_t x=0;x<pcl_cloud->width;x++)
+                        {
+                            size_t i = y*pcl_cloud->width + x;
+                            pcl_cloud->at(x,y).x = pointcloud->at(i).x();
+                            pcl_cloud->at(x,y).y = pointcloud->at(i).y();
+                            pcl_cloud->at(x,y).z = pointcloud->at(i).z();
+                        }
+
+                    //                    for (size_t i=0;i<pointcloud->size();i++)
+                    //                    {
+                    //                        pcl_cloud->at(i).x = pointcloud->at(i).x();
+                    //                        pcl_cloud->at(i).y = pointcloud->at(i).y();
+                    //                        pcl_cloud->at(i).z = pointcloud->at(i).z();
+                    //                    }
+                    m_viewer_mtx.lock();
+                    m_viewer_clouds.at(i) = pcl_cloud;
+                    m_viewer_mtx.unlock();
+                }
 #endif
+
+                // euclideanUnionFind(pointcloud);
+
+
+
 
                 if ((false))
                 {
-                    if (executeOnce && camType == CameraType_t::CENTRAL)
+                    if (executeOnce && camType == CameraType_t::REAR)
                     {
                         executeOnce = false;
+                        std::cout << "executeOnce" << std::endl;
 
-                            euclideanDepthFirstSearch(pointcloud);
-                            //euclideanUnionFind(pointcloud);
-                         //   euclideanConnectedComponentsOrganized(pointcloud);
+                        // euclideanDepthFirstSearch(pointcloud);
+                        euclideanUnionFind(pointcloud);
+                        // euclideanConnectedComponentsOrganized(pointcloud);
+
+
+                        //                        pcl::IndicesPtr indices (new std::vector <int>);
+                        //                        pcl::PassThrough<pcl::PointXYZ> pass;
+                        //                        pass.setInputCloud (cloud);
+                        //                        pass.setFilterFieldName ("z");
+                        //                        pass.setFilterLimits (0.0, 1.0);
+                        //                        pass.filter (*indices);
+                        //                        pcl::MinCutSegmentation<pcl::PointXYZ> seg;
+                        //                        seg.setInputCloud (cloud);
+                        //                        seg.setIndices (indices);
+                        //                        pcl::PointCloud<pcl::PointXYZ>::Ptr foreground_points(new pcl::PointCloud<pcl::PointXYZ> ());
+                        //                        pcl::PointXYZ point;
+                        //                        point.x = 68.97;
+                        //                        point.y = -18.55;
+                        //                        point.z = 0.57;
+                        //                        foreground_points->points.push_back(point);
+                        //                        seg.setForegroundPoints (foreground_points);
+                        //                        seg.setSigma (0);
+                        //                        seg.setRadius (0.01);
+                        //                        seg.setNumberOfNeighbours (0);
+                        //                        seg.setSourceWeight (0.3);
+                        //                        std::vector <pcl::PointIndices> clusters;
+                        //                        seg.extract (clusters);
+                        //                        std::cout << "Maximum flow is " << seg.getMaxFlow () << std::endl;
+                        //                        pcl::PointCloud <pcl::PointXYZRGB>::Ptr colored_cloud = seg.getColoredCloud ();
+                        //                        pcl::visualization::CloudViewer viewer ("Cluster viewer");
+                        //                        viewer.showCloud(colored_cloud);
+                        //                        while (!viewer.wasStopped ())
+                        //                        {
+                        //                        }
 
                     }
                 }
@@ -442,7 +499,9 @@ void CloudQueue::addCloudT(std::tuple<unsigned long long, std::vector< Eigen::Ve
 #if VERBOSE
         std::cerr << "(CloudQueue) Too many clouds in queue " << m_name << " " << m_camtype << std::endl;
 #endif
+        auto tmpptr = std::get<1>(m_cqueue.front());
         m_cqueue.pop_front();
+        delete tmpptr;
     }
     m_mtx.unlock();
 }

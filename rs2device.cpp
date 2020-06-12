@@ -204,10 +204,11 @@ void Rs2Device::rs2_capture_thread_func()
             color_frame.keep();
             m_color_frame_queue->addFrame(color_frame);
 #endif
+#if VERBOSE
             auto cap_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-cap_start).count();
             if (cap_end >= drift)
                 std::cerr << "(Rs2Device) Processing takes longer than capturing" << std::endl;
-
+#endif
 #if (VERBOSE > 1)
 #if RS_COLOR_ENABLED
             std::cout << "(Rs2Device) Color frame from cam " << getCamTypeStr() << " (" << color_frame.get_frame_number() << "): "

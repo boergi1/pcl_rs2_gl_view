@@ -32,6 +32,7 @@
 
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/segmentation/extract_clusters.h>
+#include <pcl/segmentation/min_cut_segmentation.h>
 
 #include <pcl/search/organized.h>
 #include <pcl/search/kdtree.h>
@@ -247,9 +248,9 @@ private:
     // Segmentation variables
     const int _dx_n8[8] = {+1, +1, 0, -1, -1, -1, 0, +1};
     const int _dy_n8[8] = {0, +1, +1, +1, 0, -1, -1, -1};
-    float _distanceThresholdMax = 0.76f;//0.75f;
-    float _distanceThresholdMin = 0.70f;// 0.70f;
-    float _radiusThreshold = 0.010f;
+    float _distanceThresholdMax = 0.75f;
+    float _distanceThresholdMin = 0.1f;
+    float _radiusThreshold = 0.100f;
 
     void pc_proc_thread_func();
 
@@ -261,25 +262,6 @@ public:
     std::vector<CloudQueue *>* getInputCloudsRef() { return &m_input_clouds; }
     std::vector<MatQueue *>* getDepthImageRef() { return &m_input_depth; }
     std::vector<MatQueue *>* getColorImageRef() { return &m_input_color; }
-
-
-    //                            cv::Mat centroidDistances(std::vector<tracked_object_t> *obj_centr, tracked_object_t *inp_centr, size_t size_in)
-    //                            {
-    //                                size_t size_obj = obj_centr->size();
-    //                                cv::Mat result = cv::Mat::zeros(static_cast<int>(size_obj), static_cast<int>(size_in), CV_64F);
-    //                                for (size_t i = 0; i < size_obj; i++)
-    //                                {
-    //                                    double x_o = obj_centr->at(i).cx;
-    //                                    double y_o = obj_centr->at(i).cy;
-    //                                    for (size_t j = 0; j < size_in; ++j)
-    //                                    {
-    //                                        double dx = inp_centr[j].cx - x_o;
-    //                                        double dy = inp_centr[j].cy - y_o;
-    //                                        result.at<double>(static_cast<int>(i), static_cast<int>(j)) = std::sqrt(dx * dx + dy * dy);
-    //                                    }
-    //                                }
-    //                                return result;
-    //                            }
 
     float euclideanDistance3D(Eigen::Vector3d* point_1, Eigen::Vector3d* point_2)
     {
@@ -349,148 +331,138 @@ public:
         }
     }
 
-//    void recursive_dfs_edge(int x, int y, int label, pcl::PointCloud<pcl::PointXYZ>::Ptr Cloud, cv::Mat& Labels)
-//    {
-//        //   std::cout << "recursive_dfs X" << x << " Y" << y << " L " << label <<  std::endl;
-//        if (Labels.at<int32_t>(y,x) < LabelType_t::UNIDENTIFIED) return; // "<" or "!=" ???
+    void recursive_dfs_edge(int x, int y, int label, std::vector<Eigen::Vector3d>* Cloud, cv::Mat& Labels)
+    {
+        //   std::cout << "recursive_dfs X" << x << " Y" << y << " L " << label <<  std::endl;
+        if (Labels.at<int32_t>(y,x) < LabelType_t::UNIDENTIFIED) return;
 
-//        // r d l u
-//        //        const int dx_n4[] = {+1, 0, -1, 0};
-//        //        const int dy_n4[] = {0, +1, 0, -1};
-//        // r d l u rd ld lu ru
-//        //                const int dx[] = {+1, 0, -1, 0, +1, -1, -1, +1};
-//        //                const int dy[] = {0, +1, 0, -1, +1, +1, -1, -1};
-//        // r rd d ld l lu u ru
+        static int w = RS_FRAME_WIDTH_DEPTH;
+        static int h = RS_FRAME_HEIGHT_DEPTH;
 
+        if ( (x == w) || (y == h) || x < 0 || (y < 0) ) return; // out of bounds
 
+        //  std::cout << "Accessing center X:" << x << " Y:" << y << std::endl;
+        auto center_point = Cloud->at(y*w+x);
+        if ((Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED) && ((center_point.z() < _distanceThresholdMin) || (center_point.z() > _distanceThresholdMax)))
+        {
+            Labels.at<int32_t>(y,x) = LabelType_t::BACKGROUND;
+            //     std::cout << "background X" << x << " Y " << y << std::endl;
+            return;
+        }
 
-//        static int w = Cloud->width;
-//        static int h = Cloud->height;
-
-//        if ( (x == w) || (y == h) || x < 0 || (y < 0) ) return; // out of bounds
-
-//    //    std::cout << "Accessing center X:" << x << " Y:" << y << std::endl;
-//        auto center_point = Cloud->at(x,y);
-//        if ((Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED) && ((center_point.z < _distanceThresholdMin) || (center_point.z > _distanceThresholdMax)))
-//        {
-//            Labels.at<int32_t>(y,x) = LabelType_t::BACKGROUND;
-//            //     std::cout << "background X" << x << " Y " << y << std::endl;
-//            return;
-//        }
-
-//        //   Labels.at<int32_t>(y,x) = label;
-//        static bool previousIsInvalid = false;
-//        //  static int current_label = Labels.at<int32_t>(y,x);
+        //   Labels.at<int32_t>(y,x) = label;
+        static bool previousIsInvalid = false;
+        //  static int current_label = Labels.at<int32_t>(y,x);
 
 
-//        for (int direction = 0; direction < 8; ++direction)
-//        {
+        for (int direction = 0; direction < 8; ++direction)
+        {
 
-//            int x2 = x + _dx_n8[direction];
-//            int y2 = y + _dy_n8[direction];
-//            if ( (x2 == w) || (y2 == h) || x2 < 0 || (y2 < 0) ) continue; // out of bounds
+            int x2 = x + _dx_n8[direction];
+            int y2 = y + _dy_n8[direction];
+            if ( (x2 == w) || (y2 == h) || x2 < 0 || (y2 < 0) ) continue; // out of bounds
 
-//            //   cout << "Neighborhood #" << direction << " X:" << x << " Y:" << y << " X2:" << x2 << " Y2:" << y2 << endl;
+            //   cout << "Neighborhood #" << direction << " X:" << x << " Y:" << y << " X2:" << x2 << " Y2:" << y2 << endl;
 
-//            auto neighbor_point = Cloud->at(x2,y2);
+            auto neighbor_point = Cloud->at(y2*w+x2);
 
-//            if (/*(Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED) &&*/ ((neighbor_point.z < _distanceThresholdMin) || (neighbor_point.z > _distanceThresholdMax)))
-//            {
+            if (/*(Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED) &&*/ ((neighbor_point.z() < _distanceThresholdMin) || (neighbor_point.z() > _distanceThresholdMax)))
+            {
 
-//                Labels.at<int32_t>(y2,x2) = LabelType_t::BACKGROUND;
-//                if (direction == 7)
-//                {
-//                    if  (Labels.at<int32_t>(y+_dy_n8[0],x+_dx_n8[0]) != LabelType_t::BACKGROUND)
-//                    {
-//                        //     std::cout << " recursive call with edge neighbor - X:" << x << " Y:" << y << " X2:" << x+_dx_n8[0] << " Y2:" << y+_dy_n8[0] << " L:" << Labels.at<int32_t>(y,x) << std::endl;
-//                        recursive_dfs_edge(x+_dx_n8[0], y+_dy_n8[0], Labels.at<int32_t>(y,x), Cloud, Labels);
-//                    }
-//                }
+                Labels.at<int32_t>(y2,x2) = LabelType_t::BACKGROUND;
+                if (direction == 7)
+                {
+                    if  (Labels.at<int32_t>(y+_dy_n8[0],x+_dx_n8[0]) != LabelType_t::BACKGROUND)
+                    {
+                        //     std::cout << " recursive call with edge neighbor - X:" << x << " Y:" << y << " X2:" << x+_dx_n8[0] << " Y2:" << y+_dy_n8[0] << " L:" << Labels.at<int32_t>(y,x) << std::endl;
+                        recursive_dfs_edge(x+_dx_n8[0], y+_dy_n8[0], Labels.at<int32_t>(y,x), Cloud, Labels);
+                    }
+                }
 
-//                previousIsInvalid = true;
-//                continue;
-//            }
-//            if (euclideanDistance3D(&neighbor_point, &center_point) < _radiusThreshold)
-//            {
-//                //     std::cout << "DEBUG in range, previousInvalid: "<< previousIsInvalid << endl;
+                previousIsInvalid = true;
+                continue;
+            }
+            if (euclideanDistance3D(&neighbor_point, &center_point) < _radiusThreshold)
+            {
+                //     std::cout << "DEBUG in range, previousInvalid: "<< previousIsInvalid << endl;
 
-//                if (Labels.at<int32_t>(y,x) > LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
-//                {
-//                    //        cout << "Center: identified; Neighbor: unidentified; X2:" << x2 << " Y2:" << y2 << endl;
+                if (Labels.at<int32_t>(y,x) > LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
+                {
+                    //        cout << "Center: identified; Neighbor: unidentified; X2:" << x2 << " Y2:" << y2 << endl;
 
-//                    Labels.at<int32_t>(y2,x2) = Labels.at<int32_t>(y,x);
-//                    if (previousIsInvalid)
-//                    {
-//                        previousIsInvalid = false;
-//                        //     std::cout << " recursive call with unidentified neighbor - X:" << x << " Y:" << y << " X2:" << x2 << " Y2:" << y2 << " L:" << Labels.at<int32_t>(y,x) << std::endl;
-//                        recursive_dfs_edge(x2, y2, Labels.at<int32_t>(y,x), Cloud, Labels);
-//                    }
-//                }
+                    Labels.at<int32_t>(y2,x2) = Labels.at<int32_t>(y,x);
+                    if (previousIsInvalid)
+                    {
+                        previousIsInvalid = false;
+                        //     std::cout << " recursive call with unidentified neighbor - X:" << x << " Y:" << y << " X2:" << x2 << " Y2:" << y2 << " L:" << Labels.at<int32_t>(y,x) << std::endl;
+                        recursive_dfs_edge(x2, y2, Labels.at<int32_t>(y,x), Cloud, Labels);
+                    }
+                }
 
-//                else if (Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
-//                {
-//                    //      cout << "Center: unidentified; Neighbor: unidentified; X2:" << x2 << " Y2:" << y2 << endl;
+                else if (Labels.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) == LabelType_t::UNIDENTIFIED)
+                {
+                    //      cout << "Center: unidentified; Neighbor: unidentified; X2:" << x2 << " Y2:" << y2 << endl;
 
-//                    Labels.at<int32_t>(y,x) = label;
-//                    Labels.at<int32_t>(y2,x2) = label;
-//                    if (previousIsInvalid)
-//                    {
-//                        previousIsInvalid = false;
-//                        //   std::cout << " recursive call with unidentified neighbor and center - X:" << x << " Y:" << y << " X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
-//                        recursive_dfs_edge(x2, y2, label, Cloud, Labels);
-//                    }
-//                }
+                    Labels.at<int32_t>(y,x) = label;
+                    Labels.at<int32_t>(y2,x2) = label;
+                    if (previousIsInvalid)
+                    {
+                        previousIsInvalid = false;
+                        //   std::cout << " recursive call with unidentified neighbor and center - X:" << x << " Y:" << y << " X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
+                        recursive_dfs_edge(x2, y2, label, Cloud, Labels);
+                    }
+                }
 
-//                else if (Labels.at<int32_t>(y,x) > LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) > LabelType_t::UNIDENTIFIED)
-//                {
+                else if (Labels.at<int32_t>(y,x) > LabelType_t::UNIDENTIFIED && Labels.at<int32_t>(y2,x2) > LabelType_t::UNIDENTIFIED)
+                {
 
-//                    //   cout << "Center: identified; Neighbor: identified; X2:" << x2 << " Y2:" << y2 << endl;
-//                    if (previousIsInvalid)
-//                    {
-//                        previousIsInvalid = false;
-//                        if (Labels.at<int32_t>(y,x) == Labels.at<int32_t>(y2,x2))
-//                            continue;
-//                        //   std::cout << " recursive call with identified neighbor and center - X:" << x << " Y:" << y << " X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
-//                        recursive_dfs_edge(x2, y2, Labels.at<int32_t>(y,x), Cloud, Labels);
+                    //   cout << "Center: identified; Neighbor: identified; X2:" << x2 << " Y2:" << y2 << endl;
+                    if (previousIsInvalid)
+                    {
+                        previousIsInvalid = false;
+                        if (Labels.at<int32_t>(y,x) == Labels.at<int32_t>(y2,x2))
+                            continue;
+                        //   std::cout << " recursive call with identified neighbor and center - X:" << x << " Y:" << y << " X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
+                        recursive_dfs_edge(x2, y2, Labels.at<int32_t>(y,x), Cloud, Labels);
 
 
-//                        //                        if (Labels.at<int32_t>(y,x) == Labels.at<int32_t>(y2,x2))
-//                        //                            continue;
+                        //                        if (Labels.at<int32_t>(y,x) == Labels.at<int32_t>(y2,x2))
+                        //                            continue;
 
-//                        //                        std::cout << " recursive call with identified neighbor and center - X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
-//                        //                        if (Labels.at<int32_t>(y,x) < Labels.at<int32_t>(y2,x2))
-//                        //                            Labels.at<int32_t>(y2,x2) = Labels.at<int32_t>(y,x);
-//                        //                        else
-//                        //                            Labels.at<int32_t>(y,x) = Labels.at<int32_t>(y2,x2);
-//                        //                        recursive_dfs(x2, y2, Labels.at<int32_t>(y,x), Cloud, Labels);
+                        //                        std::cout << " recursive call with identified neighbor and center - X2:" << x2 << " Y2:" << y2 << " L:" << label << std::endl;
+                        //                        if (Labels.at<int32_t>(y,x) < Labels.at<int32_t>(y2,x2))
+                        //                            Labels.at<int32_t>(y2,x2) = Labels.at<int32_t>(y,x);
+                        //                        else
+                        //                            Labels.at<int32_t>(y,x) = Labels.at<int32_t>(y2,x2);
+                        //                        recursive_dfs(x2, y2, Labels.at<int32_t>(y,x), Cloud, Labels);
 
 
 
 
-//                    }
+                    }
 
-//                    //                    if ((false))
-//                    //                    {
-//                    //                        if (Labels.at<int32_t>(y,x) == Labels.at<int32_t>(y2,x2))
-//                    //                            continue;
-//                    //                        cout << " recursive call Center: identified; Neighbor: identified; X2:" << x2 << " Y2:" << y2 << endl;
-//                    //                        if (Labels.at<int32_t>(y,x) < Labels.at<int32_t>(y2,x2))
-//                    //                            Labels.at<int32_t>(y2,x2) = Labels.at<int32_t>(y,x);
-//                    //                        else
-//                    //                            Labels.at<int32_t>(y,x) = Labels.at<int32_t>(y2,x2);
-//                    //                        recursive_dfs(x2, y2, Labels.at<int32_t>(y,x), Cloud->makeShared(), Labels);
-//                    //                    }
+                    //                    if ((false))
+                    //                    {
+                    //                        if (Labels.at<int32_t>(y,x) == Labels.at<int32_t>(y2,x2))
+                    //                            continue;
+                    //                        cout << " recursive call Center: identified; Neighbor: identified; X2:" << x2 << " Y2:" << y2 << endl;
+                    //                        if (Labels.at<int32_t>(y,x) < Labels.at<int32_t>(y2,x2))
+                    //                            Labels.at<int32_t>(y2,x2) = Labels.at<int32_t>(y,x);
+                    //                        else
+                    //                            Labels.at<int32_t>(y,x) = Labels.at<int32_t>(y2,x2);
+                    //                        recursive_dfs(x2, y2, Labels.at<int32_t>(y,x), Cloud->makeShared(), Labels);
+                    //                    }
 
-//                }
-//            }
-//            else
-//            {
-//                //    std::cout << "DEBUG out of range" << endl;
-//                previousIsInvalid = true;
-//                //   continue;
-//            }
-//        }
-//    }
+                }
+            }
+            else
+            {
+                //    std::cout << "DEBUG out of range" << endl;
+                previousIsInvalid = true;
+                //   continue;
+            }
+        }
+    }
 
     void euclideanDepthFirstSearch(std::vector<Eigen::Vector3d>* cloud)
     {
@@ -509,6 +481,7 @@ public:
                 //      std::cout << "dfs loop X:" << x << " Y:" << y << " L:" << labelMat.at<int32_t>(y,x) << std::endl;
                 if (labelMat.at<int32_t>(y,x) == LabelType_t::UNIDENTIFIED)
                     recursive_dfs(x, y, current_label++, cloud, labelMat);
+                //  recursive_dfs_edge(x, y, current_label++, cloud, labelMat);
             }
 
         auto end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count();
@@ -528,9 +501,6 @@ public:
 
     }
 
-
-
-
     void doUnion(int a, int b, int* component)
     {
         // cout << "doUnion a "<<a << " b "<<b<<endl;
@@ -543,24 +513,19 @@ public:
         //   cout << b << " is root of "<< a <<endl;
     }
 
-    //    void unionCoords(int x, int y, int x2, int y2)
-    //    {
-    //     //   cout << "unionCoords x "<<x<<" y "<<y<<" x2 "<<x2<<" y2 "<<y2<<endl;
-    //        if (y2 < h && x2 < w && input[x][y] && input[x2][y2])
-    //            doUnion(x*h + y, x2*h + y2);
-    //    }
 
-#ifdef commentout
-    void euclideanUnionFind(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
+    void euclideanUnionFind(std::vector<Eigen::Vector3d>* Cloud)
     {
         std::cout << "euclideanUnionFind" << std::endl;
-        float distanceThresholdMax = 0.76f;//0.75f;
-        float distanceThresholdMin = 0.70f;// 0.70f;
-        float radiusThreshold = 0.010f;
+        //        float distanceThresholdMax = 0.76f;//0.75f;
+        //        float distanceThresholdMin = 0.70f;// 0.70f;
+        //        float radiusThreshold = 0.010f;
 
-        int w = cloud->width;
-        int h = cloud->height;
-        int array_size = w*h;
+        auto start = std::chrono::high_resolution_clock::now();
+
+        int w = RS_FRAME_WIDTH_DEPTH;
+        int h = RS_FRAME_HEIGHT_DEPTH;
+        int array_size = Cloud->size();
 
         int component [array_size];
         for (int i = 0; i < array_size; i++)
@@ -573,9 +538,9 @@ public:
                 int y2 = y+1;
 
                 auto current_idx = x*h + y;
-                auto center_point = cloud->at(x,y);
+                auto center_point = Cloud->at(y*w+x);
 
-                if (center_point.z < distanceThresholdMin || center_point.z > distanceThresholdMax)
+                if (center_point.z() < _distanceThresholdMin || center_point.z() > _distanceThresholdMax)
                 {
                     component[current_idx] = 0;
                     continue;
@@ -583,28 +548,28 @@ public:
                 if (x2 < w)
                 {
                     int neighbor_idx = x2*h + y;
-                    pcl::PointXYZ neighbor_point = cloud->at(x2,y);
+                    auto neighbor_point = Cloud->at(y*w+x2);
 
-                    if (neighbor_point.z < distanceThresholdMin || neighbor_point.z > distanceThresholdMax)
+                    if (neighbor_point.z() < _distanceThresholdMin || neighbor_point.z() > _distanceThresholdMax)
                     {
                         component[neighbor_idx] = 0;
                         continue;
                     }
-                    if (euclideanDistance3D(&neighbor_point, &center_point) < radiusThreshold)
+                    if (euclideanDistance3D(&neighbor_point, &center_point) < _radiusThreshold)
                         doUnion(current_idx, neighbor_idx, component);
 
                 }
                 if (y2 < h)
                 {
                     int neighbor_idx = x*h + y2;
-                    pcl::PointXYZ neighbor_point = cloud->at(x,y2);
+                    auto neighbor_point = Cloud->at(y2*w+x);
 
-                    if (neighbor_point.z < distanceThresholdMin || neighbor_point.z > distanceThresholdMax)
+                    if (neighbor_point.z() < _distanceThresholdMin || neighbor_point.z() > _distanceThresholdMax)
                     {
                         component[neighbor_idx] = 0;
                         continue;
                     }
-                    if (euclideanDistance3D(&neighbor_point, &center_point) < radiusThreshold)
+                    if (euclideanDistance3D(&neighbor_point, &center_point) < _radiusThreshold)
                         doUnion(current_idx, neighbor_idx, component);
                 }
             }
@@ -618,13 +583,17 @@ public:
             for (int y = 0; y < h; y++)
             {
                 int c = x*h + y;
-                if (c == component[c]) cout << "Parent root found: " << c << endl;
+                //   if (c == component[c]) cout << "Parent root found: " << c << endl;
                 while (component[c] != c) c = component[c];
                 labelMat.at<int32_t>(y,x) = c;
             }
         }
 
-        if ((false))
+
+        auto end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count();
+        std::cout << "DEBUG took " << end << " ms" << std::endl;
+
+        if ((true))
         {
             cv::Mat show;
             show = cv::Mat(labelMat.rows, labelMat.cols, CV_8U);
@@ -636,30 +605,23 @@ public:
         }
     }
 
-    std::vector<TrackedObject*> euclideanConnectedComponentsOrganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
+    std::vector<TrackedObject*> euclideanConnectedComponentsOrganized(std::vector<Eigen::Vector3d>* Cloud)
     {
         auto start = std::chrono::high_resolution_clock::now();
-        float distanceThresholdMax = 0.75f;
-        float distanceThresholdMin = 0.70f;
-        float radiusThreshold = 0.001f;
-        bool debugPrint = false;
+
+        int w = RS_FRAME_WIDTH_DEPTH;
+        int h = RS_FRAME_HEIGHT_DEPTH;
 
         //     std::vector<TrackedObject*> objectClouds;
 
-
         uint16_t cluster_id = LabelType_t::OBJECTS;
-
-        //  cv::Mat labels = cv::Mat(height, width, CV_32SC1, cv::Scalar(-1)); // 32bit signed
-        cv::Mat labels = cv::Mat::ones(cloud->height, cloud->width, CV_16UC1);
+        cv::Mat labels = cv::Mat::ones(h, w, CV_16UC1);
 
         int num_kernels = 3;
-
-        //        cv::Mat kernel = cv::Mat::ones(3,3, CV_16UC1);
-        //        cv::Point kernel_center = cv::Point(1,1);
         cv::Mat kernel = cv::Mat::ones(num_kernels, num_kernels, CV_16UC1);
         cv::Point kernel_center = cv::Point((num_kernels-1)/2, (num_kernels-1)/2);
 
-        pcl::PointXYZ tmp_point;
+        //     pcl::PointXYZ tmp_point;
 
         int outOfRange = 0;
 
@@ -667,26 +629,26 @@ public:
 
 
 
-        for (int row = kernel_center.y; row < labels.rows - kernel_center.y; row++)
+        for (int y = kernel_center.y; y < labels.rows - kernel_center.y; y++)
         {
-            for (int col = kernel_center.x; col < labels.cols - kernel_center.x; col++)
+            for (int x = kernel_center.x; x < labels.cols - kernel_center.x; x++)
             {
-                uint16_t current_label = labels.at<uint16_t>(row, col);
+                uint16_t current_label = labels.at<uint16_t>(y, x);
                 // Only use 4N for background?
                 if ( current_label == LabelType_t::BACKGROUND )
                     continue;
                 // Check for valid point
-                tmp_point = cloud->at(col, row);
-                if (tmp_point.z < distanceThresholdMin || tmp_point.z > distanceThresholdMax)
+                auto center_point = Cloud->at(y*w+x);
+                //   tmp_point = cloud->at(col, row);
+                if (center_point.z() < _distanceThresholdMin || center_point.z() > _distanceThresholdMax)
                 {
                     outOfRange++;
-                    labels.at<uint16_t>(row, col) = static_cast<uint16_t>( LabelType_t::BACKGROUND );
+                    labels.at<uint16_t>(y, x) = static_cast<uint16_t>( LabelType_t::BACKGROUND );
                     continue;
                 }
 
-                if (debugPrint)
-                    std::cout << "DEBUG Center(x,y) = [" << col << "," << row << "] type: " << labels.at<uint16_t>(row, col)
-                              << " 3D Point: (" << tmp_point.x << "," << tmp_point.y << "," << tmp_point.z << ")" << std::endl;
+                    std::cout << "DEBUG Center(x,y) = [" << x << "," << y << "] type: " << labels.at<uint16_t>(y, x)
+                              << " 3D Point: (" << center_point.x() << "," << center_point.y() << "," << center_point.z() << ")" << std::endl;
 
                 // Only have a look at unidentified center pixels, != could be changed to < to also use center when already identified
                 //                    if ( labels.at<uint16_t>(row, col) < LabelType_t::UNIDENTIFIED )
@@ -699,33 +661,31 @@ public:
                         if ((k_x == 0) && (k_y == 0))
                             continue;
 
-                        int n_x = col + k_x;
-                        int n_y = row + k_y;
+                        int n_x = x + k_x;
+                        int n_y = y + k_y;
                         uint16_t neighbor_label = labels.at<uint16_t>(n_y, n_x);
                         if (neighbor_label == LabelType_t::BACKGROUND)
                             continue;
 
-                        if (debugPrint)
-                            std::cout << "DEBUG Neighbor(x,y) = [" << n_x << "," << n_y << "] type: " << labels.at<uint16_t>(n_y, n_x) << std::endl;
+                        //  std::cout << "DEBUG Neighbor(x,y) = [" << n_x << "," << n_y << "] type: " << labels.at<uint16_t>(n_y, n_x) << std::endl;
 
-                        current_label = labels.at<uint16_t>(row, col);
+                        current_label = labels.at<uint16_t>(y, x);
                         // Neighbor is unidentified or an identified object
-                        auto neighbor_point = cloud->at(n_x, n_y);
-                        if (neighbor_point.z < distanceThresholdMin || neighbor_point.z > distanceThresholdMax)
+                        auto neighbor_point = Cloud->at(n_y*w+n_x);
+                        if (neighbor_point.z() < _distanceThresholdMin || neighbor_point.z() > _distanceThresholdMax)
                         {
-                            if (debugPrint)
-                                std::cout << "DEBUG Neighbor is background [" << n_x << "," << n_y << "]" << std::endl;
+                            //   std::cout << "DEBUG Neighbor is background [" << n_x << "," << n_y << "]" << std::endl;
+
                             // Neighbor belongs to background, but isn't marked yet
                             outOfRange++;
                             labels.at<uint16_t>(n_y, n_x) = static_cast<uint16_t>( LabelType_t::BACKGROUND );
                             continue;
                         }
                         // Neighbor has valid coordinates
-                        bool inRange = euclideanDistance3D(&neighbor_point, &tmp_point) < radiusThreshold;
+                        bool inRange = euclideanDistance3D(&neighbor_point, &center_point) < _radiusThreshold;
                         if ( !inRange )
                         {
-                            if (debugPrint)
-                                std::cout << "DEBUG Neighbor is not in radius [" << n_x << "," << n_y << "]" << std::endl;
+                            // std::cout << "DEBUG Neighbor is not in radius [" << n_x << "," << n_y << "]" << std::endl;
                             continue;
                         }
                         // Neighbor point is in range of center point
@@ -734,32 +694,25 @@ public:
                             // Unidentified neighbor
                             if (current_label == LabelType_t::UNIDENTIFIED)
                             {
-                                if (debugPrint)
-                                    std::cout << "DEBUG combine with Neighbor [" << n_x << "," << n_y << "]" << std::endl;
+
+                                //   std::cout << "DEBUG combine with Neighbor [" << n_x << "," << n_y << "]" << std::endl;
+
                                 // Center pixel is also unidentified, create a new object
                                 //                                        objectClouds.push_back(new TrackedObject(cluster_id));
                                 //                                        objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
                                 //                                        objectClouds.back()->addOrganizedPoint(neighbor_point, n_x, n_y);
-                                labels.at<uint16_t>(row, col) = static_cast<uint16_t>( cluster_id );
+                                labels.at<uint16_t>(y, x) = static_cast<uint16_t>( cluster_id );
                                 labels.at<uint16_t>(n_y, n_x) =static_cast<uint16_t>(  cluster_id );
                                 //     current_label = cluster_id;
                                 cluster_id++;
-
-                                //                                        std::cout << "DEBUG created NEW object with points: C [" << labels.at<uint16_t>(row, col)
-                                //                                                  << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
-                                //                                                  << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
                             }
                             else
                             {
-                                if (debugPrint)
-                                    std::cout << "DEBUG add Neighbor to current [" << n_x << "," << n_y << "]" << std::endl;
+                                //  std::cout << "DEBUG add Neighbor to current [" << n_x << "," << n_y << "]" << std::endl;
+
                                 // Center pixel belongs to object, add neighbor to current label
                                 //                                        objectClouds.at(current_label - LabelType_t::OBJECTS)->addOrganizedPoint(neighbor_point, n_x, n_y);
                                 labels.at<uint16_t>(n_y, n_x) = static_cast<uint16_t>( current_label );
-
-                                //                                        std::cout << "DEBUG added NEW neighbor to existing center object with points: C [" << labels.at<uint16_t>(row, col)
-                                //                                                  << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
-                                //                                                  << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
                             }
                         }
                         else
@@ -767,21 +720,17 @@ public:
                             // Neighbor is identified and already belongs to an object
                             if (current_label == LabelType_t::UNIDENTIFIED)
                             {
-                                if (debugPrint)
-                                    std::cout << "DEBUG add Center to Neighbor [" << n_x << "," << n_y << "]" << std::endl;
+                                // std::cout << "DEBUG add Center to Neighbor [" << n_x << "," << n_y << "]" << std::endl;
+
                                 // Add center point to existing neighbor object
                                 //                                        objectClouds.at(neighbor_label - LabelType_t::OBJECTS)->addOrganizedPoint(tmp_point, col, row);
-                                labels.at<uint16_t>(row, col) = static_cast<uint16_t>( neighbor_label );
+                                labels.at<uint16_t>(y, x) = static_cast<uint16_t>( neighbor_label );
                                 //   current_label = neighbor_label;
-
-                                //                                        std::cout << "DEBUG added NEW center to existing neighbor object with points: C [" << labels.at<uint16_t>(row, col)
-                                //                                                  << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
-                                //                                                  << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
                             }
                             else
                             {
-                                if (debugPrint)
-                                    std::cout << "DEBUG Center and Neighbor already identified [" << n_x << "," << n_y << "]" << std::endl;
+                                //  std::cout << "DEBUG Center and Neighbor already identified [" << n_x << "," << n_y << "]" << std::endl;
+
                                 // Neighbor and center are both identified,
                                 // which means both belong to the same objects
                                 if (neighbor_label != current_label)
@@ -792,74 +741,29 @@ public:
                                     }
                                     else
                                     {
-                                        labels.at<uint16_t>(row, col) = static_cast<uint16_t>( neighbor_label );
+                                        labels.at<uint16_t>(y, x) = static_cast<uint16_t>( neighbor_label );
                                     }
 
                                 }
-                                //                                    else
-                                //                                    {
-                                //                                        labels.at<uint16_t>(row, col) = static_cast<uint16_t>( neighbor_label );
-                                //                                    }
-
-
-                                //                                    // Neighbor and center are both identified,
-                                //                                    // which means both belong to the same OR different objects
-                                //                                    if (neighbor_label != current_label)
-                                //                                    {
-                                //                                        // Check if both points belong to the same object
-                                //                                        if (euclideanDistance3D(&neighbor_point, &tmp_point) < radiusThreshold)
-                                //                                        {
-                                //                                            // Both belong to the same object, combine them
-                                //                                            //                                                auto neighbor_object = objectClouds.at(neighbor_label - LabelType_t::OBJECTS);
-                                //                                            //                                                auto center_object = objectClouds.at(current_label - LabelType_t::OBJECTS);
-                                //                                            if (current_label < neighbor_label)
-                                //                                            {
-                                //                                                //                                                    center_object->addOrganizedIndices(neighbor_object->getOrganizedIndices());
-                                //                                                //                                                    center_object->addCloud(neighbor_object->getCloud());
-                                //                                                //                                                    neighbor_object->clear();
-                                //                                                labels.at<uint16_t>(n_y, n_x) = static_cast<uint16_t>( current_label );
-                                //                                            }
-                                //                                            else
-                                //                                            {
-                                //                                                //                                                    neighbor_object->addOrganizedIndices(center_object->getOrganizedIndices());
-                                //                                                //                                                    neighbor_object->addCloud(center_object->getCloud());
-                                //                                                //                                                    center_object->clear();
-                                //                                                labels.at<uint16_t>(row, col) = static_cast<uint16_t>( neighbor_label );
-                                //                                                //     current_label = neighbor_label;
-                                //                                            }
-
-                                //                                            //                                                std::cout << "DEBUG combined existing center with existing neighbor object with points: C [" << labels.at<uint16_t>(row, col)
-                                //                                            //                                                          << "] " << row << " " << col << " " << tmp_point << " and N ["<< labels.at<uint16_t>(n_y, n_x)
-                                //                                            //                                                          << "] " << n_y << " " << n_x << " " << neighbor_point << std::endl;
-
-                                //                                        }
-                                //                                    }
                             }
                         }
 
                     }
                 }
 
-                if (labels.at<uint16_t>(row, col) == LabelType_t::UNIDENTIFIED)
+                if (labels.at<uint16_t>(y, x) == LabelType_t::UNIDENTIFIED)
                 {
-                    if (debugPrint)
-                        std::cout << "DEBUG Nothing found for center [" << col << "," << row << "]" << std::endl;
+                    // std::cout << "DEBUG Nothing found for center [" << x << "," << y << "]" << std::endl;
+
                     // No partner found, move to background
                     outOfRange++;
-                    labels.at<uint16_t>(row, col) = static_cast<uint16_t>( LabelType_t::BACKGROUND );
+                    labels.at<uint16_t>(y, x) = static_cast<uint16_t>( LabelType_t::BACKGROUND );
                 }
-
-
-
-
             }
         }
-
-
-
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count();
+        std::cout << "DEBUG took " << duration << std::endl;
         int found_clusters = cluster_id - LabelType_t::OBJECTS;
-
-
         std::vector<TrackedObject*> objectClouds;
         cv::Mat cvMask, cvStats, cvCentroids;
         cv::Mat converted_labels;
@@ -896,45 +800,7 @@ public:
         }
 
 
-        //        // Get object positions
-        //        cv::Mat labels, stats, centroids;
-        //        int marker_count = cv::connectedComponentsWithStats(marker, labels, stats, centroids, 4, CV_32S); // 10-15 ms
-        //        int skip = 2; // !!! First two objects are just background
-        //        int objects_count = marker_count - skip;
-        //        if (marker_count > skip)
-        //        {
-        //            tmp_tr_obj = new tracked_object_t[objects_count]();
-        //            // Fill array with segmented objects
-        //            for (int i = 0; i < objects_count; i++)
-        //            {
-        //                tmp_tr_obj[i].x = stats.at<int>(i+skip, cv::CC_STAT_LEFT);
-        //                tmp_tr_obj[i].y = stats.at<int>(i+skip, cv::CC_STAT_TOP);
-        //                tmp_tr_obj[i].w = stats.at<int>(i+skip, cv::CC_STAT_WIDTH);
-        //                tmp_tr_obj[i].h = stats.at<int>(i+skip, cv::CC_STAT_HEIGHT);
-        //                tmp_tr_obj[i].area = stats.at<int>(i+skip, cv::CC_STAT_AREA);
-        //                tmp_tr_obj[i].cx = centroids.at<double>(i+skip, 0);
-        //                tmp_tr_obj[i].cy = centroids.at<double>(i+skip, 1);
-        //                tmp_tr_obj[i].unique_id = -1;
-        //                tmp_tr_obj[i].lost_ctr = 0;
-        //                tmp_tr_obj[i].seen_ctr = 0;
-        //#if (IMSHOW_CV > 0 && VERBOSE > 0)
-        //                // Draw markers on cv window
-        //                cv::rectangle(marker, cv::Rect(tmp_tr_obj[i].x, tmp_tr_obj[i].y,
-        //                                               tmp_tr_obj[i].w, tmp_tr_obj[i].h), cv::Scalar(0), 1);
-        //                cv::circle(marker, cv::Point2d(tmp_tr_obj[i].cx, tmp_tr_obj[i].cy),
-        //                           10, cv::Scalar(255), -1);
-        //                cv::putText(marker, "id: "+std::to_string(i)+" area: "+std::to_string(static_cast<int>(mm_per_pix * tmp_tr_obj[i].w))
-        //                            + " x "+std::to_string(static_cast<int>(mm_per_pix * tmp_tr_obj[i].h)),
-        //                            cv::Point(tmp_tr_obj[i].x, tmp_tr_obj[i].cy),
-        //                            cv::FONT_HERSHEY_SIMPLEX, 1, 0, 3);
-        //#endif
-        //            }
-        //        }
-
-
-
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count();
-        std::cout << std::endl << "DEBUG objectClouds " << objectClouds.size() << " out of range: " << outOfRange << " took: " << duration << std::endl << std::endl;
+        //  std::cout << std::endl << "DEBUG objectClouds " << objectClouds.size() << " out of range: " << outOfRange << " took: " << duration << std::endl << std::endl;
         //     std::cout << std::endl << "DEBUG label matrix " << labels.rows << " " << labels.cols << std::endl << labels << std::endl << std::endl;
 
         cv::Mat show;
@@ -943,132 +809,14 @@ public:
         double min, max;
         cv::minMaxIdx(show, &min, &max);
         double scale = std::numeric_limits<uint8_t>::max() / max;
-        cv::applyColorMap( show*scale, show, cv::COLORMAP_HOT);
+        cv::applyColorMap( show*scale, show, cv::COLORMAP_JET);
         cv::imshow("components", show);
         cv::imshow("markers", show_markers);
         cv::waitKey(0);
 
         return objectClouds;
 
-
-
-
-
-        //        for (int row = 0; row < labels.rows; row++)
-        //        {
-        //            for (int col = 0; col < labels.cols; col++)
-        //            {
-        //                tmp_point = cloud->at(col,row);
-        //                // GLOBAL_REGION_Z_MAX_M
-        //                // Check for valid point
-        //                if ((tmp_point.z > 0) && (tmp_point.z < distanceThreshold))
-        //                    //  if (tmp_point.z > 0)
-        //                {
-        //                    int upper_row = row - 1;
-        //                    int left_col = col - 1;
-        //                    bool new_object = false;
-        //                    TrackedObject* neighborObject = nullptr;
-        //                    //    pcl::PointXYZ* neighbor_point_ptr = nullptr;
-        //                    pcl::PointXYZ neighbor_point;
-        //                    if (upper_row < 0)
-        //                    {
-        //                        // First pixel
-        //                        if (left_col < 0)
-        //                        {
-        //                            new_object = true;
-        //                        }
-        //                        else
-        //                        {
-        //                            uint16_t neighbor_label = labels.at<uint16_t>(row, left_col);
-        //                            // First row - check left neighbor
-        //                            if (neighbor_label > 0)
-        //                            {
-        //                                //   std::cout << "DEBUG found neighbor LEFT (first row) " << row << " " << left_col << std::endl;
-        //                                neighborObject = objectClouds.at(neighbor_label-1);
-        //                                //  neighbor_point_ptr = neighborObject->getOrganizedPoint(left_col, row);//(row, left_col);
-        //                                neighbor_point = cloud->at(left_col, row);
-        //                            }
-        //                            else
-        //                                new_object = true;
-        //                        }
-        //                    }
-        //                    else if (left_col < 0)
-        //                    {
-        //                        // First column - check upper neighbor
-        //                        uint16_t neighbor_label = labels.at<uint16_t>(upper_row, col);
-        //                        if (neighbor_label > 0)
-        //                        {
-        //                            //    std::cout << "DEBUG found neighbor UPPER (first column) " << upper_row << " " << col << std::endl;
-        //                            neighborObject = objectClouds.at(neighbor_label-1);
-        //                            //    neighbor_point_ptr = neighborObject->getOrganizedPoint(col, upper_row);//(upper_row, col);
-        //                            neighbor_point = cloud->at(col, upper_row);
-        //                        }
-        //                        else
-        //                            new_object = true;
-        //                    }
-        //                    else
-        //                    {
-        //                        // Rest - check upper first, then left
-        //                        uint16_t neighbor_label_up = labels.at<uint16_t>(upper_row, col);
-        //                        if (neighbor_label_up > 0)
-        //                        {
-        //                            //   std::cout << "DEBUG found neighbor UPPER (body) " << upper_row << " " << col << std::endl;
-        //                            neighborObject = objectClouds.at(neighbor_label_up-1);
-        //                            // neighbor_point_ptr = neighborObject->getOrganizedPoint(col, upper_row);//(upper_row, col);
-        //                            neighbor_point = cloud->at(col, upper_row);
-        //                        }
-        //                        else
-        //                        {
-        //                            uint16_t neighbor_label_left = labels.at<uint16_t>(row, left_col);
-        //                            if (neighbor_label_left > 0)
-        //                            {
-        //                                //    std::cout << "DEBUG found neighbor LEFT (body) " << row << " " << left_col << std::endl;
-        //                                neighborObject = objectClouds.at(neighbor_label_left-1);
-        //                                //  neighbor_point_ptr = neighborObject->getOrganizedPoint(left_col, row);//(row, left_col);
-        //                                neighbor_point = cloud->at(left_col, row);
-        //                            }
-        //                            else
-        //                                new_object = true;
-        //                        }
-        //                    }
-
-
-
-
-        //                    if (new_object)
-        //                    {
-        //                        // Add new object
-        //                        objectClouds.push_back(new TrackedObject(cluster_id));
-        //                        objectClouds.back()->addOrganizedPoint(tmp_point, col, row);
-        //                        labels.at<uint16_t>(row, col) = cluster_id;
-        //                        //    std::cout << "DEBUG added NEW object with point: [" << labels.at<uint16_t>(row, col) << "] " << row << " " << col << " " << tmp_point << std::endl;
-        //                        cluster_id++;
-        //                    }
-        //                    else
-        //                    {
-        //                        // Add point to existing object
-        //                        if (neighbor_point.z)
-        //                        {
-        //                            if ( euclideanDistance3D(&neighbor_point, &tmp_point) < radiusThreshold )
-        //                            {
-        //                                neighborObject->addOrganizedPoint(tmp_point, col, row);
-        //                                labels.at<uint16_t>(row, col) = neighborObject->getID();
-        //                                //          std::cout << "DEBUG added EXISTING point to object: [" << labels.at<uint16_t>(row, col) << "] " << row << " " << col << " " << tmp_point << std::endl;
-        //                            }
-        //                        }
-        //                        else std::cerr << "DEBUG got no neighbor point from row " << row << " col " << col << std::endl;
-        //                    }
-        //                }
-        //                else
-        //                    outOfRange++;
-        //            }
-        //        }
-
-
     }
-#endif
-
-
 
 
 
@@ -1220,212 +968,212 @@ public:
 
 
 
-//    void euclideanConnectedComponentsUnorganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
-//    {
-//        std::cout << "euclideanConnectedComponentsUnorganized " << cloud->height << "x" << cloud->width << std::endl;
+    //    void euclideanConnectedComponentsUnorganized(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
+    //    {
+    //        std::cout << "euclideanConnectedComponentsUnorganized " << cloud->height << "x" << cloud->width << std::endl;
 
-//        //        auto start = std::chrono::high_resolution_clock::now();
-//        //        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count();
+    //        //        auto start = std::chrono::high_resolution_clock::now();
+    //        //        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count();
 
-//        float distanceThresholdMax = 0.75f;
-//        float distanceThresholdMin = 0.70f;
-//        float radiusThreshold = 0.001f;
-//        bool debugPrint = false;
+    //        float distanceThresholdMax = 0.75f;
+    //        float distanceThresholdMin = 0.70f;
+    //        float radiusThreshold = 0.001f;
+    //        bool debugPrint = false;
 
-//        //     std::vector<TrackedObject*> objectClouds;
-
-
-//        int cluster_id = LabelType_t::OBJECTS;
-
-//        pcl::console::TicToc tt;
-//        tt.tic();
-//        std::vector<int> labels = std::vector<int>(cloud->size(), LabelType_t::UNIDENTIFIED);
-
-//        for (int i = 0 ; i < cloud->size() ; i++ )
-//        {
-
-//            if (labels.at(i) != LabelType_t::UNIDENTIFIED) // only unidentified
-//                continue;
-//            //           std::cout << i+1 << " out of " << cloud->size() << std::endl;
-//            auto point_1 = cloud->at(i);
-//            if (point_1.z == 0.0)
-//            {
-//                labels.at(i) = LabelType_t::BACKGROUND;
-//                continue;
-//            }
-
-//            for (int j = 0 ; j < cloud->size() ; j++ )
-//            {
-//                if (labels.at(j) < LabelType_t::UNIDENTIFIED) // no background
-//                    continue;
-//                if (labels.at(i) == labels.at(j))
-//                    continue;
-
-//                auto point_2 = cloud->at(j);
-//                if (point_2.z == 0.0)
-//                {
-//                    labels.at(j) = LabelType_t::BACKGROUND;
-//                    continue;
-//                }
-//                if ( euclideanDistance3D(&point_1, &point_2)  < radiusThreshold ) // in range
-//                {
-
-//                    if (labels.at(i) > LabelType_t::UNIDENTIFIED)
-//                    {
-//                        // Center identified
-//                        if (labels.at(j) > LabelType_t::UNIDENTIFIED)
-//                        {
-//                            // Both identified, combine labels if needed
-//                            if (labels.at(i) < labels.at(j))
-//                                labels.at(j) = labels.at(i);
-//                            else
-//                                labels.at(i) = labels.at(j);
-//                        }
-//                        else
-//                        {
-//                            // Neighbor unidentified, add to current label
-//                            labels.at(j) = labels.at(i);
-//                        }
-//                    }
-//                    else
-//                    {
-//                        // Center unidentified
-//                        if (labels.at(j) > LabelType_t::UNIDENTIFIED)
-//                        {
-//                            // Neighbor identified, add to other label
-//                            labels.at(i) = labels.at(j);
-//                        }
-//                        else
-//                        {
-//                            // Neighbor unidentified, create a new cluster
-//                            labels.at(i) = cluster_id;
-//                            labels.at(j) = cluster_id;
-//                            cluster_id++;
-//                        }
-//                    }
-//                }
-//            }
-//        }
+    //        //     std::vector<TrackedObject*> objectClouds;
 
 
+    //        int cluster_id = LabelType_t::OBJECTS;
+
+    //        pcl::console::TicToc tt;
+    //        tt.tic();
+    //        std::vector<int> labels = std::vector<int>(cloud->size(), LabelType_t::UNIDENTIFIED);
+
+    //        for (int i = 0 ; i < cloud->size() ; i++ )
+    //        {
+
+    //            if (labels.at(i) != LabelType_t::UNIDENTIFIED) // only unidentified
+    //                continue;
+    //            //           std::cout << i+1 << " out of " << cloud->size() << std::endl;
+    //            auto point_1 = cloud->at(i);
+    //            if (point_1.z == 0.0)
+    //            {
+    //                labels.at(i) = LabelType_t::BACKGROUND;
+    //                continue;
+    //            }
+
+    //            for (int j = 0 ; j < cloud->size() ; j++ )
+    //            {
+    //                if (labels.at(j) < LabelType_t::UNIDENTIFIED) // no background
+    //                    continue;
+    //                if (labels.at(i) == labels.at(j))
+    //                    continue;
+
+    //                auto point_2 = cloud->at(j);
+    //                if (point_2.z == 0.0)
+    //                {
+    //                    labels.at(j) = LabelType_t::BACKGROUND;
+    //                    continue;
+    //                }
+    //                if ( euclideanDistance3D(&point_1, &point_2)  < radiusThreshold ) // in range
+    //                {
+
+    //                    if (labels.at(i) > LabelType_t::UNIDENTIFIED)
+    //                    {
+    //                        // Center identified
+    //                        if (labels.at(j) > LabelType_t::UNIDENTIFIED)
+    //                        {
+    //                            // Both identified, combine labels if needed
+    //                            if (labels.at(i) < labels.at(j))
+    //                                labels.at(j) = labels.at(i);
+    //                            else
+    //                                labels.at(i) = labels.at(j);
+    //                        }
+    //                        else
+    //                        {
+    //                            // Neighbor unidentified, add to current label
+    //                            labels.at(j) = labels.at(i);
+    //                        }
+    //                    }
+    //                    else
+    //                    {
+    //                        // Center unidentified
+    //                        if (labels.at(j) > LabelType_t::UNIDENTIFIED)
+    //                        {
+    //                            // Neighbor identified, add to other label
+    //                            labels.at(i) = labels.at(j);
+    //                        }
+    //                        else
+    //                        {
+    //                            // Neighbor unidentified, create a new cluster
+    //                            labels.at(i) = cluster_id;
+    //                            labels.at(j) = cluster_id;
+    //                            cluster_id++;
+    //                        }
+    //                    }
+    //                }
+    //            }
+    //        }
 
 
 
-        //        cv::Mat centroidDistances(std::vector<tracked_object_t> *obj_centr, tracked_object_t *inp_centr, size_t size_in)
-        //        {
-        //            size_t size_obj = obj_centr->size();
-        //            cv::Mat result = cv::Mat::zeros(static_cast<int>(size_obj), static_cast<int>(size_in), CV_64F);
-        //            for (size_t i = 0; i < size_obj; i++)
-        //            {
-        //                double x_o = obj_centr->at(i).cx;
-        //                double y_o = obj_centr->at(i).cy;
-        //                for (size_t j = 0; j < size_in; ++j)
-        //                {
-        //                    double dx = inp_centr[j].cx - x_o;
-        //                    double dy = inp_centr[j].cy - y_o;
-        //                    result.at<double>(static_cast<int>(i), static_cast<int>(j)) = std::sqrt(dx * dx + dy * dy);
-        //                }
-        //            }
-        //            return result;
-        //        }
+
+
+    //        cv::Mat centroidDistances(std::vector<tracked_object_t> *obj_centr, tracked_object_t *inp_centr, size_t size_in)
+    //        {
+    //            size_t size_obj = obj_centr->size();
+    //            cv::Mat result = cv::Mat::zeros(static_cast<int>(size_obj), static_cast<int>(size_in), CV_64F);
+    //            for (size_t i = 0; i < size_obj; i++)
+    //            {
+    //                double x_o = obj_centr->at(i).cx;
+    //                double y_o = obj_centr->at(i).cy;
+    //                for (size_t j = 0; j < size_in; ++j)
+    //                {
+    //                    double dx = inp_centr[j].cx - x_o;
+    //                    double dy = inp_centr[j].cy - y_o;
+    //                    result.at<double>(static_cast<int>(i), static_cast<int>(j)) = std::sqrt(dx * dx + dy * dy);
+    //                }
+    //            }
+    //            return result;
+    //        }
 
 
 
-        //        pcl::PointXYZ temp_pt;
+    //        pcl::PointXYZ temp_pt;
 
-        //        // just z
-        //        for (int a = 0 ; a < 5 ; a++ )
-        //            for (int i = 0 ; i < cloud->size()-1 ; i++ )
-        //            {
-        //                auto &point_1 = cloud->at(i);
-        //                auto &point_2 = cloud->at(i+1);
-        //                if (point_1.z < point_2.z)
-        //                {
-        //                    temp_pt = point_1;
-        //                    point_1 = point_2;
-        //                    point_2 = temp_pt;
-        //                }
-        //                if (point_1.y < point_2.y)
-        //                {
-        //                    temp_pt = point_1;
-        //                    point_1 = point_2;
-        //                    point_2 = temp_pt;
-        //                }
-        //                if (point_1.x < point_2.x)
-        //                {
-        //                    temp_pt = point_1;
-        //                    point_1 = point_2;
-        //                    point_2 = temp_pt;
-        //                }
-        //            }
-
-
+    //        // just z
+    //        for (int a = 0 ; a < 5 ; a++ )
+    //            for (int i = 0 ; i < cloud->size()-1 ; i++ )
+    //            {
+    //                auto &point_1 = cloud->at(i);
+    //                auto &point_2 = cloud->at(i+1);
+    //                if (point_1.z < point_2.z)
+    //                {
+    //                    temp_pt = point_1;
+    //                    point_1 = point_2;
+    //                    point_2 = temp_pt;
+    //                }
+    //                if (point_1.y < point_2.y)
+    //                {
+    //                    temp_pt = point_1;
+    //                    point_1 = point_2;
+    //                    point_2 = temp_pt;
+    //                }
+    //                if (point_1.x < point_2.x)
+    //                {
+    //                    temp_pt = point_1;
+    //                    point_1 = point_2;
+    //                    point_2 = temp_pt;
+    //                }
+    //            }
 
 
 
 
 
 
-        //        float temp;
-        //        for (int i = 0 ; i < cloud->size() ; i++ )
-        //        {
-        //            auto &point_1 = cloud->at(i);
-        //            float temp;
-        //            for (int j = 0 ; j < cloud->size() ; j++ )
-        //            {
-        //                if ( i==j )
-        //                    continue;
-        //                auto &point_2 = cloud->at(j);
 
-        //                if (point_1.z < point_2.z)
-        //                {
-        //                    temp = point_1.z;
-        //                    point_1.z = point_2.z;
-        //                    point_2.z = temp;
-        //                //    std::cout << "DEBUG changed points Z" << point_2 << " with " << point_1 << std::endl;
-        //                    continue;
-        //                }
-        //                if (point_1.y < point_2.y)
-        //                {
-        //                    temp = point_1.y;
-        //                    point_1.y = point_2.y;
-        //                    point_2.y = temp;
-        //              //      std::cout << "DEBUG changed points Y" << point_2 << " with " << point_1 << std::endl;
-        //                    continue;
-        //                }
-        //                if (point_1.x < point_2.x)
-        //                {
-        //                    temp = point_1.x;
-        //                    point_1.x = point_2.x;
-        //                    point_2.x = temp;
-        //                //    std::cout << "DEBUG changed points X" << point_2 << " with " << point_1 << std::endl;
-        //                    continue;
 
-        //                }
-        //            }
+    //        float temp;
+    //        for (int i = 0 ; i < cloud->size() ; i++ )
+    //        {
+    //            auto &point_1 = cloud->at(i);
+    //            float temp;
+    //            for (int j = 0 ; j < cloud->size() ; j++ )
+    //            {
+    //                if ( i==j )
+    //                    continue;
+    //                auto &point_2 = cloud->at(j);
 
-        //            //            for (int i = 0 ; i < 2 ; i++ )
-        //            //                for (int j = 0 ; j < 2; j++ )
-        //            //                    for (int k = 0 ; k < 5 ; k++ )
-        //            //                        for (int a = 0 ; a < 2 ; a++ )
-        //            //                            for (int b = 0 ; b < 2 ; b++ )
-        //            //                                for (int c = 0 ; c < 5 ; c++ )
-        //            //                                    if (array[i][j][k] < array[a][b][c]){
-        //            //                                        temp = array[i][j][k];
-        //            //                                        array[i][j][k] = array[a][b][c];
-        //            //                                        array[a][b][c] = temp;}
-        //            //            for (int i = 0 ; i < 2 ; i++ )
-        //            //                for (int j = 0 ; j < 2 ; j++ )
-        //            //                    for (int k = 0 ; k < 5 ; k++ )
-        //            //                    {
-        //            //                        cout << array[i][j][k] << endl;
-        //            //                    }        //        }
+    //                if (point_1.z < point_2.z)
+    //                {
+    //                    temp = point_1.z;
+    //                    point_1.z = point_2.z;
+    //                    point_2.z = temp;
+    //                //    std::cout << "DEBUG changed points Z" << point_2 << " with " << point_1 << std::endl;
+    //                    continue;
+    //                }
+    //                if (point_1.y < point_2.y)
+    //                {
+    //                    temp = point_1.y;
+    //                    point_1.y = point_2.y;
+    //                    point_2.y = temp;
+    //              //      std::cout << "DEBUG changed points Y" << point_2 << " with " << point_1 << std::endl;
+    //                    continue;
+    //                }
+    //                if (point_1.x < point_2.x)
+    //                {
+    //                    temp = point_1.x;
+    //                    point_1.x = point_2.x;
+    //                    point_2.x = temp;
+    //                //    std::cout << "DEBUG changed points X" << point_2 << " with " << point_1 << std::endl;
+    //                    continue;
 
-//        std::cout << "DEBUG took " << tt.toc() << std::endl;
-//        tt.tic();
-//        for (int i = 0 ; i < labels.size() ; i++ )
-//            std::cout << "Label #" << i << " " << labels.at(i) << std::endl;
-//    }
+    //                }
+    //            }
+
+    //            //            for (int i = 0 ; i < 2 ; i++ )
+    //            //                for (int j = 0 ; j < 2; j++ )
+    //            //                    for (int k = 0 ; k < 5 ; k++ )
+    //            //                        for (int a = 0 ; a < 2 ; a++ )
+    //            //                            for (int b = 0 ; b < 2 ; b++ )
+    //            //                                for (int c = 0 ; c < 5 ; c++ )
+    //            //                                    if (array[i][j][k] < array[a][b][c]){
+    //            //                                        temp = array[i][j][k];
+    //            //                                        array[i][j][k] = array[a][b][c];
+    //            //                                        array[a][b][c] = temp;}
+    //            //            for (int i = 0 ; i < 2 ; i++ )
+    //            //                for (int j = 0 ; j < 2 ; j++ )
+    //            //                    for (int k = 0 ; k < 5 ; k++ )
+    //            //                    {
+    //            //                        cout << array[i][j][k] << endl;
+    //            //                    }        //        }
+
+    //        std::cout << "DEBUG took " << tt.toc() << std::endl;
+    //        tt.tic();
+    //        for (int i = 0 ; i < labels.size() ; i++ )
+    //            std::cout << "Label #" << i << " " << labels.at(i) << std::endl;
+    //    }
 
 #if PCL_VIEWER
     std::function<void (pcl::visualization::PCLVisualizer&)> viewer_callback = [](pcl::visualization::PCLVisualizer& viewer)

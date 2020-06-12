@@ -96,7 +96,6 @@ void ThreadController::isTaskReady(BaseTask *Task)
 ThreadInterface::ThreadInterface(ThreadController *parent)
 {
     m_ref_to_controller = parent;
-
 }
 
 void ThreadInterface::addOutput(BaseTask *task)
@@ -108,7 +107,7 @@ void ThreadInterface::addOutput(BaseTask *task)
         std::cerr << "(ThreadController) Too many tasks in output" << std::endl;
         auto tmpptr = m_ref_to_controller->OutputQueue.front();
         m_ref_to_controller->OutputQueue.pop_front();
-        //  delete tmpptr;
+        delete tmpptr;
     }
     m_ref_to_controller->output_mtx.unlock();
 }

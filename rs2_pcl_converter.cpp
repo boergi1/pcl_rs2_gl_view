@@ -169,7 +169,7 @@ void Rs2_PCL_Converter::converter_thread_func()
                 FrameToCloudTask* task_f2c = new FrameToCloudTask(queue_depth->getCameraType(), queue_depth->getIntrinsics(), &m_extrinsics.at(i));
                 task_f2c->setTaskType(TaskType_t::TSKTYPE_Frame2Cloud);
                 //  task_f2c->setTaskId(queue_depth->getCameraType());
-                task_f2c->in.push_back(std::make_tuple(depth_frame.get_frame_number(), depth_mat.clone(), ts));
+                task_f2c->addInput(std::make_tuple(depth_frame.get_frame_number(), depth_mat.clone(), ts));
                 task_f2c->setTaskStatus(BaseTask::WORK_TO_DO);
                 this->addTask(task_f2c);
 
@@ -342,7 +342,7 @@ void Rs2_PCL_Converter::converter_thread_func()
                 }
                 case TSKTYPE_Frame2Cloud:
                 {
-                    for (auto cloudtuple : static_cast<FrameToCloudTask*>(tmp_task)->out)
+                    for (auto cloudtuple : static_cast<FrameToCloudTask*>(tmp_task)->getOutput())
                     {
                         for(auto& cloudqueue : *m_ref_to_cloud_queues)
                         {

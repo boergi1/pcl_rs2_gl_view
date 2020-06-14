@@ -210,6 +210,109 @@ public:
         _in.push_back(input);
         m_mtx.unlock();
     }
+    std::vector<std::tuple<unsigned long long, std::vector< float >*, long long>> getOutput()
+    {
+        m_mtx.lock();
+        auto output = _out;
+        m_mtx.unlock();
+        return output;
+    }
+    void process() override
+    {
+#if (VERBOSE > 1)
+        auto start = std::chrono::high_resolution_clock::now();
+#endif
+        size_t i = 0;
+        _out.resize(_in.size());
+        if (this->getTaskStatus() != TaskStatus_t::WORK_TO_DO)
+        {
+            std::cerr << "Task error" << std::endl;
+            return;
+        }
+
+        while (_in.size())
+        {
+            auto tmp_t = _in.front();
+            _in.pop_front();
+            cv::Mat depth_mat = std::get<1>(tmp_t);
+            std::vector<float>* tmp_vertices = new std::vector<float>(FRAME_DATA_SIZE);
+            transformDepthMatToCloud(depth_mat, tmp_vertices, m_intr, m_extr);
+            // float* tmp_vertices_ptr = new float[FRAME_DATA_SIZE];
+            _out.at(i++) = std::make_tuple(std::get<0>(tmp_t), tmp_vertices, std::get<2>(tmp_t));
+        }
+        this->setTaskStatus(TASK_DONE);
+#if (VERBOSE > 1)
+        std::cout << "(Converter) FrameToCloudTask (type:" << this->getTaskType() << " id:" << this->getTaskId() << ") took " << std::chrono::duration_cast
+                     <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count() << " ms" << std::endl;
+#endif
+    }
+private:
+    camera_intrinsics_t* m_intr;
+    camera_extrinsics_t* m_extr;
+    std::mutex m_mtx;
+    std::deque<std::tuple<unsigned long long, cv::Mat, long long>> _in;
+    std::vector<std::tuple<unsigned long long, std::vector< float >*, long long>> _out;
+
+    void transformDepthMatToCloud(cv::Mat& depthMat, std::vector<float>* vertices, camera_intrinsics_t* intrinsics, camera_extrinsics_t* extrinsics)
+    {
+        size_t point_idx = 0;
+        ushort* data_ptr = (ushort*) depthMat.data;
+        //        ushort* data_ptr = new ushort[depthMat.total()];
+        //        std::memcpy(data_ptr, (ushort*)depthMat.data, depthMat.total());
+        for (int y = 0; y<depthMat.rows; y++)
+        {
+            for (int x = 0; x < depthMat.cols; x++)
+            {
+                float z = static_cast<ushort>(*data_ptr) * 0.001; // segfault
+
+                if (z > 0.f)
+                {
+                    float origin[3] { z * (x - intrinsics->cx) / intrinsics->fx, z * (intrinsics->cy - y) / intrinsics->fy, z };
+                    float target[3];
+                    transformPointToPoint(origin, target, extrinsics);
+                    vertices->at(point_idx++) = target[0];
+                    vertices->at(point_idx++) = target[1];
+                    vertices->at(point_idx++) = target[2];
+                }
+                else
+                {
+                    vertices->at(point_idx++) = 0.f;
+                    vertices->at(point_idx++) = 0.f;
+                    vertices->at(point_idx++) = 0.f;
+                }
+                ++data_ptr;
+            }
+        }
+    }
+
+
+    inline void transformPointToPoint(const float* origin_pt, float* target_pt, const camera_extrinsics_t* extrin)
+    {
+        target_pt[0] = extrin->R[0] * origin_pt[0] + extrin->R[1] * origin_pt[1] + extrin->R[2] * origin_pt[2] + extrin->T[0];
+        target_pt[1] = extrin->R[3] * origin_pt[0] + extrin->R[4] * origin_pt[1] + extrin->R[5] * origin_pt[2] + extrin->T[1];
+        target_pt[2] = extrin->R[6] * origin_pt[0] + extrin->R[7] * origin_pt[1] + extrin->R[8] * origin_pt[2] + extrin->T[2];
+    }
+
+};
+
+#ifdef eigen_pointcloud
+class FrameToCloudTask : public BaseTask
+{
+public:
+    FrameToCloudTask(int taskId, camera_intrinsics_s* intrinsics, camera_extrinsics_s* extrinsics)
+    {
+        this->setTaskId(taskId);
+        m_intr = intrinsics;
+        m_extr = extrinsics;
+    }
+    virtual ~FrameToCloudTask() override {}
+
+    void addInput(std::tuple<unsigned long long, cv::Mat, long long> input)
+    {
+        m_mtx.lock();
+        _in.push_back(input);
+        m_mtx.unlock();
+    }
     std::vector<std::tuple<unsigned long long, std::vector< Eigen::Vector3d >*, long long>> getOutput()
     {
         m_mtx.lock();
@@ -291,42 +394,6 @@ private:
         //        std::cout << "DEBUG skipped " << skipped_pts << "(type:" << this->getTaskType() << " id:" << this->getTaskId() << ")" << std::endl;
     }
 
-    //    void transformDepthMatToCloud(cv::Mat& depthMat, std::vector< Eigen::Vector3d >* cloud, camera_intrinsics_t* intrinsics, camera_extrinsics_t* extrinsics, bool filterRegion = false)
-    //    {
-    //        size_t point_idx = 0, skipped_pts = 0;
-
-    //        ushort* data_ptr = (ushort*) depthMat.data;
-    //        //        ushort* data_ptr = new ushort[depthMat.total()];
-    //        //        std::memcpy(data_ptr, (ushort*)depthMat.data, depthMat.total());
-
-    //        for (int i = 0; i<depthMat.rows; i++)
-    //        {
-    //            for (int j = 0; j < depthMat.cols; j++)
-    //            {
-    //                float z = static_cast<ushort>(*data_ptr) * 0.001; // segfault
-    //                // z = 0.001 * z;
-    //                if (z > 0.f)
-    //                {
-    //                    float origin[3] { z * (j - intrinsics->cx) / intrinsics->fx, z * (intrinsics->cy - i) / intrinsics->fy, z };
-    //                    float target[3];
-    //                    transformPointToPoint(origin, target, extrinsics);
-    //                    cloud->at(point_idx).x() = target[0];
-    //                    cloud->at(point_idx).y() = target[1];
-    //                    cloud->at(point_idx).z() = target[2];
-    //                }
-    //                else
-    //                {
-    //                    cloud->at(point_idx).x() = 0.0;
-    //                    cloud->at(point_idx).y() = 0.0;
-    //                    cloud->at(point_idx).z() = 0.0;
-    //                    skipped_pts++;
-    //                }
-    //                ++point_idx;
-    //                ++data_ptr;
-    //            }
-    //        }
-    //        //        std::cout << "DEBUG skipped " << skipped_pts << "(type:" << this->getTaskType() << " id:" << this->getTaskId() << ")" << std::endl;
-    //    }
 
     inline void transformPointToPoint(const float* origin_pt, float* target_pt, const camera_extrinsics_t* extrin)
     {
@@ -335,14 +402,8 @@ private:
         target_pt[2] = extrin->R[6] * origin_pt[0] + extrin->R[7] * origin_pt[1] + extrin->R[8] * origin_pt[2] + extrin->T[2];
     }
 
-    //void PointsToCloudTask::rs2_transform_point_to_point_custom(float *to_point, const rs2_extrinsics *extrin, const float *from_point)
-    //{
-    //    to_point[0] = extrin->rotation[0] * from_point[0] + extrin->rotation[3] * from_point[1] + extrin->rotation[6] * from_point[2] + extrin->translation[0];
-    //    to_point[1] = extrin->rotation[1] * from_point[0] + extrin->rotation[4] * from_point[1] + extrin->rotation[7] * from_point[2] + extrin->translation[1];
-    //    to_point[2] = extrin->rotation[2] * from_point[0] + extrin->rotation[5] * from_point[1] + extrin->rotation[8] * from_point[2] + extrin->translation[2];
-    //}
-
 };
+#endif
 
 #ifdef pcl_pointcloud
 class FrameToCloudTask : public BaseTask

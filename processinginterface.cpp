@@ -1,11 +1,11 @@
 #include "processinginterface.h"
 
-ProcessingInterface::ProcessingInterface(std::vector<CameraType_t> device_types)
+ProcessingInterface::ProcessingInterface(std::vector<CameraType_t> device_types, MainWindowGL* Window)
 #if (PCL_VIEWER == 1)
     : m_pcl_viewer("Cloud Viewer")
     #endif
 {
-
+    _WindowRef = Window;
     for (auto& camtype : device_types)
     {
         //#if PROC_PIPE_PC_ENABLED
@@ -197,7 +197,7 @@ void ProcessingInterface::pc_proc_thread_func()
                 auto ctr = std::get<2>(cloudt);
 #if (VERBOSE > 0)
                 std::cout << "(ProcessingInterface) PointCloud received from camera " << camType << " (" << ctr
-                          << ") size: " << pointcloud->size() << std::endl;
+                          << ") length: " << pointcloud->size()/3 << " size: " << pointcloud->size() << std::endl;
 #endif
 
 #if PCL_VIEWER
@@ -230,15 +230,21 @@ void ProcessingInterface::pc_proc_thread_func()
 
 
 
-                if ((false))
+                if ((true))
                 {
                     if (executeOnce && camType == CameraType_t::REAR)
                     {
-                        executeOnce = false;
-                        std::cout << "executeOnce" << std::endl;
+                        if (_WindowRef->isActive())
+                        {
+//                            for (size_t i=0; i<pointcloud->size(); i++)
+//                                std::cout << "i " << pointcloud->at(i) << std::endl;
+                            executeOnce = false;
+                            std::cout << "executeOnce" << std::endl;
+                            _WindowRef->setVerticesBuffer(0, pointcloud);
+                        }
 
                         // euclideanDepthFirstSearch(pointcloud);
-                        euclideanUnionFind(pointcloud);
+                        // euclideanUnionFind(pointcloud);
                         // euclideanConnectedComponentsOrganized(pointcloud);
 
 
@@ -490,7 +496,7 @@ CloudQueue::CloudQueue(CameraType_t CameraType, std::string name){
     m_name = name;
 }
 
-void CloudQueue::addCloudT(std::tuple<unsigned long long, std::vector< Eigen::Vector3d >*, long long> cloud_tuple)
+void CloudQueue::addCloudT(std::tuple<unsigned long long, std::vector< float >*, long long> cloud_tuple)
 {
     m_mtx.lock();
     m_cqueue.push_back(cloud_tuple);
@@ -506,7 +512,7 @@ void CloudQueue::addCloudT(std::tuple<unsigned long long, std::vector< Eigen::Ve
     m_mtx.unlock();
 }
 
-std::tuple<unsigned long long, std::vector< Eigen::Vector3d >*, long long> CloudQueue::getCloudT()
+std::tuple<unsigned long long, std::vector< float >*, long long> CloudQueue::getCloudT()
 {
     if (m_cqueue.size())
     {
@@ -524,7 +530,7 @@ std::tuple<unsigned long long, std::vector< Eigen::Vector3d >*, long long> Cloud
     }
 }
 
-const std::tuple<unsigned long long, std::vector< Eigen::Vector3d >*, long long> CloudQueue::readCloudT()
+const std::tuple<unsigned long long, std::vector< float >*, long long> CloudQueue::readCloudT()
 {
     if (m_cqueue.size())
     {

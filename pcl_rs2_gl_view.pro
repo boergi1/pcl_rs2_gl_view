@@ -7,6 +7,7 @@ SOURCES += \
         customtypes.cpp \
         deviceinterface.cpp \
         main.cpp \
+        mainwindowgl.cpp \
         ocvdevice.cpp \
         processinginterface.cpp \
         rs2_pcl_converter.cpp \
@@ -18,12 +19,11 @@ HEADERS += \
     deviceinterface.h \
     filters.h \
     format.h \
+    mainwindowgl.h \
     ocvdevice.h \
     processinginterface.h \
-    rs2_glgraphics.hpp \
     rs2_pcl_converter.h \
     rs2device.h \
-    third-party/stb_easy_font.h \
     threadcontroller.h
 
 INCLUDEPATH += /usr/include/pcl-1.8 /usr/include/eigen3 /usr/include/ni /usr/include/vtk-6.3 /usr/include/boost /usr/local/include/opencv4
@@ -52,8 +52,12 @@ LIBS += \
         -lvtkCommonDataModel-6.3 \
         -lvtkCommonMath-6.3 \
         # GL/GLU/GLFW
-        -lGL -lGLU -lglfw
+        -lGL -lGLU -lglfw -lGLEW
         # PCL - non standard libs
 #        -lpcl_gpu_octree -lpcl_gpu_containers -lpcl_gpu_utils \
 #        -lpcl_gpu_features -lpcl_gpu_kinfu -lpcl_gpu_kinfu_large_scale -lpcl_gpu_segmentation \
 #        -lpcl_cuda_features -lpcl_cuda_segmentation -lpcl_cuda_sample_consensus
+
+DISTFILES += \
+    shaders/fragmentshader.glsl \
+    shaders/vertexshader.glsl

@@ -113,7 +113,7 @@ void Rs2Device::rs2_capture_thread_func()
     rs2::pipeline rs2_pipe;
     rs2::config rs2_cfg;
     rs2_cfg.enable_device(serial);
-    rs2_cfg.enable_stream(RS2_STREAM_DEPTH, RS_FRAME_WIDTH_DEPTH, RS_FRAME_HEIGHT_DEPTH, RS2_FORMAT_Z16, RS_FRAME_RATE_DEPTH);
+    rs2_cfg.enable_stream(RS2_STREAM_DEPTH, FRAME_WIDTH_DEPTH, FRAME_HEIGHT_DEPTH, RS2_FORMAT_Z16, FRAME_RATE_DEPTH);
 #if RS_COLOR_ENABLED
     rs2_cfg.enable_stream(RS2_STREAM_COLOR);
 #else

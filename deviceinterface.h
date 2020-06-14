@@ -45,7 +45,13 @@ public:
     ~DeviceInterface()
     {
         std::cout << "(DeviceInterface) Destructor " << std::endl;
-        disconnectRealSenseDevices();
+        while (m_rs2_devices.size())
+        {
+            std::cout << "(DeviceInterface) Freeing Rs2Device memory " << m_rs2_devices.size() << std::endl;
+            delete m_rs2_devices.back();
+            m_rs2_devices.back() = nullptr;
+            m_rs2_devices.pop_back();
+        }
     }
 
     std::vector<Rs2Device *>* getRs2Devices() { return &m_rs2_devices; }
@@ -65,14 +71,11 @@ public:
 
     void disconnectRealSenseDevices()
     {
-        while (m_rs2_devices.size())
+        std::cout << "DEBUG disconnectRealSenseDevices " << m_rs2_devices.size() << std::endl;
+        for(size_t i=0; i < m_rs2_devices.size(); i++)
         {
-            std::cout << "(DeviceInterface) Freeing Rs2Device memory " << m_rs2_devices.size() << std::endl;
-            m_rs2_devices.back()->setCaptureEnabled(false);
-            if (m_rs2_devices.back()->isActive()) std::cerr << "Still active" << std::endl;
-            delete m_rs2_devices.back();
-            m_rs2_devices.back() = nullptr;
-            m_rs2_devices.pop_back();
+            m_rs2_devices.at(i)->setCaptureEnabled(false);
+            if (m_rs2_devices.at(i)->isActive()) std::cerr << "Error: Rs2 Device not disabled: " << i << std::endl;
         }
     }
 

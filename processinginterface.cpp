@@ -200,47 +200,40 @@ void ProcessingInterface::pc_proc_thread_func()
                           << ") length: " << pointcloud->size()/3 << " size: " << pointcloud->size() << std::endl;
 #endif
 
-#if PCL_VIEWER
-                if (camType == CameraType_t::REAR)
-                {
-                    pcl::PointCloud <pcl::PointXYZ>::Ptr pcl_cloud (new pcl::PointCloud <pcl::PointXYZ>(RS_FRAME_WIDTH_DEPTH,RS_FRAME_HEIGHT_DEPTH));
-                    for (size_t y=0;y<pcl_cloud->height;y++)
-                        for (size_t x=0;x<pcl_cloud->width;x++)
-                        {
-                            size_t i = y*pcl_cloud->width + x;
-                            pcl_cloud->at(x,y).x = pointcloud->at(i).x();
-                            pcl_cloud->at(x,y).y = pointcloud->at(i).y();
-                            pcl_cloud->at(x,y).z = pointcloud->at(i).z();
-                        }
-
-                    //                    for (size_t i=0;i<pointcloud->size();i++)
-                    //                    {
-                    //                        pcl_cloud->at(i).x = pointcloud->at(i).x();
-                    //                        pcl_cloud->at(i).y = pointcloud->at(i).y();
-                    //                        pcl_cloud->at(i).z = pointcloud->at(i).z();
-                    //                    }
-                    m_viewer_mtx.lock();
-                    m_viewer_clouds.at(i) = pcl_cloud;
-                    m_viewer_mtx.unlock();
-                }
-#endif
-
                 // euclideanUnionFind(pointcloud);
 
+                switch (camType)
+                {
+                case CameraType_t::FRONT:
+                {
+                    _WindowRef->setVerticesBuffer(0, pointcloud);
+                    break;
+                }
+                case CameraType_t::CENTRAL:
+                {
+                    _WindowRef->setVerticesBuffer(FRAME_DATA_SIZE, pointcloud);
+                    break;
+                }
+                case CameraType_t::REAR:
+                {
+                    _WindowRef->setVerticesBuffer(FRAME_DATA_SIZE*2, pointcloud);
+                    break;
+                }
+                default: break;
+                }
 
 
-
-                if ((true))
+                if ((false))
                 {
                     if (executeOnce && camType == CameraType_t::REAR)
                     {
                         if (_WindowRef->isActive())
                         {
-//                            for (size_t i=0; i<pointcloud->size(); i++)
-//                                std::cout << "i " << pointcloud->at(i) << std::endl;
+                            //                            for (size_t i=0; i<pointcloud->size(); i++)
+                            //                                std::cout << "i " << pointcloud->at(i) << std::endl;
                             executeOnce = false;
                             std::cout << "executeOnce" << std::endl;
-                            _WindowRef->setVerticesBuffer(0, pointcloud);
+                            //                            _WindowRef->setVerticesBuffer(0, pointcloud);
                         }
 
                         // euclideanDepthFirstSearch(pointcloud);
@@ -500,7 +493,7 @@ void CloudQueue::addCloudT(std::tuple<unsigned long long, std::vector< float >*,
 {
     m_mtx.lock();
     m_cqueue.push_back(cloud_tuple);
-    if (m_cqueue.size() > QUE_SIZE_PCL)
+    if (m_cqueue.size() > QUE_SIZE_CLOUDS)
     {
 #if VERBOSE
         std::cerr << "(CloudQueue) Too many clouds in queue " << m_name << " " << m_camtype << std::endl;

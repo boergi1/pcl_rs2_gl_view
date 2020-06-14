@@ -4,7 +4,7 @@
 #include <iomanip>
 
 // Verbosity level
-#define VERBOSE 2
+#define VERBOSE 0
 // Global settings
 #define PROC_PIPE_PC_ENABLED 0
 #define PROC_PIPE_MAT_ENABLED 1
@@ -44,13 +44,13 @@
 #define TRAN_FRONT_TO_CENTRAL_Y_M 0.0//-0.020
 #define TRAN_FRONT_TO_CENTRAL_Z_M 0.0//-0.010
 #define ROT_FRONT_TO_CENTRAL_ANG_X 0.0
-#define ROT_FRONT_TO_CENTRAL_ANG_Y 0.0//-45.0
+#define ROT_FRONT_TO_CENTRAL_ANG_Y -45.0//-45.0
 #define ROT_FRONT_TO_CENTRAL_ANG_Z 0.0
 #define TRAN_REAR_TO_CENTRAL_X_M 0.0
 #define TRAN_REAR_TO_CENTRAL_Y_M 0.0//0.020
 #define TRAN_REAR_TO_CENTRAL_Z_M 0.0//-0.010
 #define ROT_REAR_TO_CENTRAL_ANG_X 0.0
-#define ROT_REAR_TO_CENTRAL_ANG_Y 0.0
+#define ROT_REAR_TO_CENTRAL_ANG_Y 45.0//45.0
 #define ROT_REAR_TO_CENTRAL_ANG_Z 0.0
 
 #define CONV_THREAD_POOL_SIZE 7
@@ -61,12 +61,12 @@
 
 
 // Buffer sizes
-#define QUE_SIZE_RS2FRAMES 100
-#define QUE_SIZE_PCL 100
-#define BUF_SIZE_CLOUDS 100
-#define BUF_SIZE_MATS 100
-#define BUF_SIZE_CVCAP 100
-#define BUF_SIZE_TOBJ 100
+#define QUE_SIZE_RS2FRAMES 10
+#define QUE_SIZE_CLOUDS 10
+#define BUF_SIZE_MATS 10
+#define QUE_SIZE_SEG 10
+#define BUF_SIZE_CVCAP 10
+#define BUF_SIZE_TOBJ 10
 #define BUF_SIZE_VEL CV_FRAME_RATE*2 // x, y pairs
 // Thread poll delays
 #define DELAY_CONV_POLL_NS FRAME_PERIOD_NS/2/3

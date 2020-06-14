@@ -24,19 +24,23 @@ using namespace glm;
 class MainWindowGL
 {
 private:
-    GLFWwindow* _window;
+    GLFWwindow* _Window;
+    int _windowWidth = 1024;
+    int _windowHeight = 768;
     bool _active = false;
     GLuint _programID;
     // Initial position : on +Z
-    glm::vec3 position = glm::vec3( 0, 0, 5 );
+    glm::vec3 _viewPosition = glm::vec3( 0, 0, 0 );
     // Initial horizontal angle : toward -Z
-    float horizontalAngle = 3.14f;
-    // Initial vertical angle : none
-    float verticalAngle = 0.0f;
+    float _horizontalAngle = 0.f;//3.14f;
+    // Initial vertical angle
+    float _verticalAngle = 0.0f;
     // Initial Field of View
-    float initialFoV = 45.0f;
-    float speed = 3.0f; // 3 units / second
-    float mouseSpeed = 0.005f;
+    float _initialFoV = 45.0f;
+    float _moveSpeed = 3.0f; // units / second
+    float _mouseSpeed = 0.005f;
+    double _cursorPosX = _windowWidth/2;
+    double _cursorPosY = _windowHeight/2;
 
     glm::mat4 _ViewMatrix;
     glm::mat4 _ProjectionMatrix;
@@ -47,7 +51,9 @@ private:
     GLuint _ModelMatrixID;
 
     // static float g_vertex_buffer_data[]
-    static const size_t _data_size_total = FRAME_DATA_SIZE;
+    static const size_t _data_size_points = FRAME_DATA_SIZE*3;
+    static const size_t _data_size_cs = 18;
+    static const size_t _data_size_total = _data_size_points + _data_size_cs; // 3d points + coordinate system
     //    float* _gl_data_vertices = new float[_data_size_total];
     //    float* _gl_data_colors = new float[_data_size_total];
     float _gl_data_vertices[_data_size_total];
@@ -60,6 +66,23 @@ private:
     GLuint _VerticesID;
     GLuint _ColorsID;
     GLuint _VertexBufferObjectID;
+
+    const float _cs_line_vertices[_data_size_cs] = {
+        0.f,0.f,0.f,
+        1.f,0.f,0.f,
+        0.f,0.f,0.f,
+        0.f,1.f,0.f,
+        0.f,0.f,0.f,
+        0.f,0.f,1.f
+    };
+    const float _cs_line_colors[_data_size_cs] = {
+        1.f,0.f,0.f,
+        1.f,0.f,0.f,
+        0.f,1.f,0.f,
+        0.f,1.f,0.f,
+        0.f,0.f,1.f,
+        0.f,0.f,1.f
+    };
 
     GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path)
     {
@@ -150,58 +173,59 @@ private:
         float deltaTime = float(currentTime - lastTime);
 
         // Get mouse position
-        double xpos, ypos;
-        glfwGetCursorPos(_window, &xpos, &ypos);
+        if (glfwGetMouseButton(_Window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+        {
 
+            glfwGetCursorPos(_Window, &_cursorPosX, &_cursorPosY);
+            // Compute new orientation
+            _horizontalAngle += _mouseSpeed * float(1024/2 - _cursorPosX );
+            _verticalAngle   += _mouseSpeed * float( 768/2 - _cursorPosY );
+        }
         // Reset mouse position for next frame
-        glfwSetCursorPos(_window, 1024/2, 768/2);
-
-        // Compute new orientation
-        horizontalAngle += mouseSpeed * float(1024/2 - xpos );
-        verticalAngle   += mouseSpeed * float( 768/2 - ypos );
+        glfwSetCursorPos(_Window, _windowWidth/2, _windowHeight/2);
 
         // Direction : Spherical coordinates to Cartesian coordinates conversion
         glm::vec3 direction(
-                    cos(verticalAngle) * sin(horizontalAngle),
-                    sin(verticalAngle),
-                    cos(verticalAngle) * cos(horizontalAngle)
+                    cos(_verticalAngle) * sin(_horizontalAngle),
+                    sin(_verticalAngle),
+                    cos(_verticalAngle) * cos(_horizontalAngle)
                     );
 
         // Right vector
         glm::vec3 right = glm::vec3(
-                    sin(horizontalAngle - 3.14f/2.0f),
+                    sin(_horizontalAngle - 3.14f/2.0f),
                     0,
-                    cos(horizontalAngle - 3.14f/2.0f)
+                    cos(_horizontalAngle - 3.14f/2.0f)
                     );
 
         // Up vector
         glm::vec3 up = glm::cross( right, direction );
 
         // Move forward
-        if (glfwGetKey( _window, GLFW_KEY_UP ) == GLFW_PRESS){
-            position += direction * deltaTime * speed;
+        if (glfwGetKey( _Window, GLFW_KEY_UP ) == GLFW_PRESS){
+            _viewPosition += direction * deltaTime * _moveSpeed;
         }
         // Move backward
-        if (glfwGetKey( _window, GLFW_KEY_DOWN ) == GLFW_PRESS){
-            position -= direction * deltaTime * speed;
+        if (glfwGetKey( _Window, GLFW_KEY_DOWN ) == GLFW_PRESS){
+            _viewPosition -= direction * deltaTime * _moveSpeed;
         }
         // Strafe right
-        if (glfwGetKey( _window, GLFW_KEY_RIGHT ) == GLFW_PRESS){
-            position += right * deltaTime * speed;
+        if (glfwGetKey( _Window, GLFW_KEY_RIGHT ) == GLFW_PRESS){
+            _viewPosition += right * deltaTime * _moveSpeed;
         }
         // Strafe left
-        if (glfwGetKey( _window, GLFW_KEY_LEFT ) == GLFW_PRESS){
-            position -= right * deltaTime * speed;
+        if (glfwGetKey( _Window, GLFW_KEY_LEFT ) == GLFW_PRESS){
+            _viewPosition -= right * deltaTime * _moveSpeed;
         }
 
-        float FoV = initialFoV;// - 5 * glfwGetMouseWheel(); // Now GLFW 3 requires setting up a callback for this. It's a bit too complicated for this beginner's tutorial, so it's disabled instead.
+        float FoV = _initialFoV;// - 5 * glfwGetMouseWheel(); // Now GLFW 3 requires setting up a callback for this. It's a bit too complicated for this beginner's tutorial, so it's disabled instead.
 
         // Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
         _ProjectionMatrix = glm::perspective(glm::radians(FoV), 4.0f / 3.0f, 0.1f, 100.0f);
         // Camera matrix
         _ViewMatrix       = glm::lookAt(
-                    position,           // Camera is here
-                    position+direction, // and looks here : at the same position, plus "direction"
+                    _viewPosition,           // Camera is here
+                    _viewPosition+direction, // and looks here : at the same position, plus "direction"
                     up                  // Head is up (set to 0,-1,0 to look upside-down)
                     );
 
@@ -213,11 +237,12 @@ private:
 public:
     MainWindowGL();
 
-    void setVerticesBuffer(size_t bufferOffset, std::vector <float>* verticesData)
+
+    void setVerticesBuffer(size_t bufferOffset, std::vector <float>* verticesData) // 5-10ms each
     {
         auto vert_start = std::chrono::high_resolution_clock::now();
         size_t end_size = bufferOffset + verticesData->size();
-        if (end_size > _data_size_total)
+        if (end_size > _data_size_points)
         {
             std::cerr << "Error: Invalid vertices buffer access" << std::endl;
             return;
@@ -229,8 +254,8 @@ public:
             _gl_data_vertices[i] = verticesData->at(in_idx++);
         _mtx_vertices.unlock();
         auto vert_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-vert_start).count();
-        std::cout << "setVerticesBuffer took " << vert_end << " ms" << std::endl;
     }
+
     void setColorsBuffer(size_t bufferOffset, size_t dataSize, std::vector <float>* colorData)
     {
         std::cout << "DEBUG setColorsBuffer " << bufferOffset << " " << dataSize;
@@ -271,25 +296,21 @@ public:
             std::cerr << "Failed to initialize GLFW" << std::endl;
             return false;
         }
-        // Create window
-        glfwWindowHint(GLFW_SAMPLES, 4); // 4x antialiasing
+        // Window settings
+        glfwWindowHint(GLFW_SAMPLES, 0); // antialiasing
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); // We want OpenGL 3.3
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make MacOS happy; should not be needed
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); // We don't want the old OpenGL
-
         // Open a window and create its OpenGL context
-
-        int window_width = 1024;
-        int window_height = 768;
-        _window = glfwCreateWindow( window_width, window_height, "Pointcloud Viewer", NULL, NULL);
-        if( _window == NULL )
+        _Window = glfwCreateWindow( _windowWidth, _windowHeight, "Pointcloud Viewer", NULL, NULL);
+        if( _Window == NULL )
         {
             std::cerr << "Failed to open GLFW window." << std::endl;
             glfwTerminate();
             return false;
         }
-        glfwMakeContextCurrent(_window); // Initialize GLEW
+        glfwMakeContextCurrent(_Window); // Initialize GLEW
         glewExperimental = true; // Needed in core profile
         if (glewInit() != GLEW_OK)
         {
@@ -297,13 +318,13 @@ public:
             return false;
         }
         // Ensure we can capture the escape key being pressed below
-        glfwSetInputMode(_window, GLFW_STICKY_KEYS, GL_TRUE);
+        glfwSetInputMode(_Window, GLFW_STICKY_KEYS, GL_TRUE);
         // Hide the mouse and enable unlimited mouvement
-        // glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        glfwSetInputMode(_Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
         // Set the mouse at the center of the screen
         glfwPollEvents();
-        glfwSetCursorPos(_window, 1024/2, 768/2);
+        glfwSetCursorPos(_Window, 1024/2, 768/2);
 
         // background color
         glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
@@ -311,6 +332,7 @@ public:
         // Enable depth test - Correct near and far objects by Z value
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_PROGRAM_POINT_SIZE);
+        glLineWidth(10.f);
         // Accept fragment if it closer to the camera than the former one
         glDepthFunc(GL_LESS);
         // Cull triangles which normal is not towards the camera
@@ -349,25 +371,90 @@ public:
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, _indices->size() * sizeof(unsigned int), &_indices->at(0), GL_STATIC_DRAW);
 #endif
         // Fill default colors
-        for (size_t i=0; i<_data_size_total; i++)
+        for (size_t i=0; i<_data_size_points; i++)
         {
-            float val = ((float)std::rand()/(float)RAND_MAX);
+            float val = 0.f;// = ((float)std::rand()/(float)RAND_MAX);
+            if (i < FRAME_DATA_SIZE) // R
+                switch (i % 3) {
+                case 0:
+                { // x
+                    val = 1.f;
+                    break;
+                }
+                case 1:
+                { // y
+                    val = 0.f;
+                    break;
+                }
+                case 2:
+                { // z
+                    val = 0.f;
+                    break;
+                }
+                }
+            else if (i < FRAME_DATA_SIZE*2) // G
+                switch (i % 3) {
+                case 0:
+                {
+                    val = 0.f;
+                    break;
+                }
+                case 1:
+                {
+                    val = 1.f;
+                    break;
+                }
+                case 2:
+                {
+                    val = 0.f;
+                    break;
+                }
+                }
+            else // B
+                switch (i % 3) {
+                case 0:
+                {
+                    val = 0.f;
+                    break;
+                }
+                case 1:
+                {
+                    val = 0.f;
+                    break;
+                }
+                case 2:
+                {
+                    val = 1.f;
+                    break;
+                }
+                }
+
             _gl_data_colors[i] = val;
         }
+        // Fill default vertices and colors (coordinate system)
+        size_t idx = 0;
+        for (size_t i=_data_size_points; i<_data_size_total; i++)
+        {
 
+            _gl_data_vertices[i] = _cs_line_vertices[idx];
+            _gl_data_colors[i] =_cs_line_colors[idx];
+            idx++;
+        }
         return true;
     }
 
     bool isActive() { return _active; }
 
-    void drawPointClouds()
+    void drawDataPoints()
     {
         _active = true;
         // Check if the ESC key was pressed or the window was closed
-        while( _active && glfwGetKey(_window, GLFW_KEY_ESCAPE ) != GLFW_PRESS &&
-               glfwWindowShouldClose(_window) == 0 )
+        while( _active && glfwGetKey(_Window, GLFW_KEY_ESCAPE ) != GLFW_PRESS &&
+               glfwWindowShouldClose(_Window) == 0 )
         {
+#if (VERBOSE > 2)
             auto draw_start = std::chrono::high_resolution_clock::now();
+#endif
             // Clear the screen. can cause flickering
             glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
             // Compute the MVP matrix from keyboard and mouse input
@@ -430,18 +517,19 @@ public:
                         (void*)0           // element array buffer offset
                         );
 #else
-            glDrawArrays(GL_POINTS, 0, 12*3); // 12*3 indices starting at 0 -> 12 triangles -> 6 squares
-
+            glDrawArrays(GL_POINTS, 0, _data_size_points-1);
+            glDrawArrays(GL_LINES, _data_size_points, _data_size_total-1);
 #endif
             glDisableVertexAttribArray(0);
             glDisableVertexAttribArray(1);
 
             // Swap buffers
-            glfwSwapBuffers(_window);
+            glfwSwapBuffers(_Window);
             glfwPollEvents();
-
+#if (VERBOSE > 2)
             auto draw_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-draw_start).count();
             std::cout << "Draw took " << draw_end << " ms" << std::endl;
+#endif
 
         }
         _active = false;

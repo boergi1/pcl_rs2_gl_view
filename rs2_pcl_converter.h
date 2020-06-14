@@ -256,6 +256,7 @@ private:
     void transformDepthMatToCloud(cv::Mat& depthMat, std::vector<float>* vertices, camera_intrinsics_t* intrinsics, camera_extrinsics_t* extrinsics)
     {
         size_t point_idx = 0;
+        flip(depthMat, depthMat, 1);
         ushort* data_ptr = (ushort*) depthMat.data;
         //        ushort* data_ptr = new ushort[depthMat.total()];
         //        std::memcpy(data_ptr, (ushort*)depthMat.data, depthMat.total());

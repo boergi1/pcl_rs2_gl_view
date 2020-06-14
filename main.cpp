@@ -54,7 +54,7 @@ int main() try
         MainWindow->exit();
         return EXIT_FAILURE;
     }
-    else MainWindow->drawPointClouds();
+    else MainWindow->drawDataPoints();
 
     // Window was closed, terminate.
     device_interface->disconnectRealSenseDevices();

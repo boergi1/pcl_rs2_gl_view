@@ -1,6 +1,7 @@
 #ifndef MAINWINDOWGL_H
 #define MAINWINDOWGL_H
 #include "format.h"
+#include "filters.h"
 
 #include <iostream>
 #include <stdio.h>
@@ -19,7 +20,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 using namespace glm;
 
-#define USE_VBO 1
+#define USE_VBO 0
 
 class MainWindowGL
 {
@@ -30,14 +31,14 @@ private:
     bool _active = false;
     GLuint _programID;
     // Initial position : on +Z
-    glm::vec3 _viewPosition = glm::vec3( 0, 0, 0 );
+    glm::vec3 _viewPosition = glm::vec3( 0, 1, -2 );
     // Initial horizontal angle : toward -Z
-    float _horizontalAngle = 0.f;//3.14f;
+    float _horizontalAngle = 0.0f;//3.14f;
     // Initial vertical angle
-    float _verticalAngle = 0.0f;
+    float _verticalAngle = degreesToRadians(-20.0);
     // Initial Field of View
     float _initialFoV = 45.0f;
-    float _moveSpeed = 3.0f; // units / second
+    float _moveSpeed = 2.0f; // units / second
     float _mouseSpeed = 0.005f;
     double _cursorPosX = _windowWidth/2;
     double _cursorPosY = _windowHeight/2;
@@ -67,13 +68,14 @@ private:
     GLuint _ColorsID;
     GLuint _VertexBufferObjectID;
 
+
     const float _cs_line_vertices[_data_size_cs] = {
         0.f,0.f,0.f,
-        1.f,0.f,0.f,
+        0.5f,0.f,0.f,
         0.f,0.f,0.f,
-        0.f,1.f,0.f,
+        0.f,0.5f,0.f,
         0.f,0.f,0.f,
-        0.f,0.f,1.f
+        0.f,0.f,0.5f
     };
     const float _cs_line_colors[_data_size_cs] = {
         1.f,0.f,0.f,
@@ -172,6 +174,14 @@ private:
         double currentTime = glfwGetTime();
         float deltaTime = float(currentTime - lastTime);
 
+        //        if (glfwGetMouseButton(_Window, GLFW_KEY_SPACE) == GLFW_PRESS)
+        //        {
+        //            std::cerr << "SPACE ";
+        //            _viewPosition = glm::vec3( 0, 1, -2 );
+        //            _horizontalAngle = 0.0f;
+        //            _verticalAngle = degreesToRadians(-20.0);
+        //        }
+
         // Get mouse position
         if (glfwGetMouseButton(_Window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
         {
@@ -251,7 +261,57 @@ public:
 
         _mtx_vertices.lock();
         for (size_t i = bufferOffset; i < end_size; i++)
-            _gl_data_vertices[i] = verticesData->at(in_idx++);
+        {
+            //   std::cout << "DEBUG loop " << i << std::endl;
+            if ((false))
+            {
+                auto tmp = verticesData->at(in_idx++);
+                switch (i%3)
+                {
+                case 0:
+                {
+                    if (tmp < GLOBAL_REGION_X_MIN_M || tmp > GLOBAL_REGION_X_MAX_M)
+                    {
+                        //  std::cout << "DEBUG X " << i << std::endl;
+                        _gl_data_vertices[i] = 0.f;
+                        _gl_data_vertices[++i] = 0.f;
+                        _gl_data_vertices[++i] = 0.f;
+                    }
+                    else
+                        _gl_data_vertices[i] = tmp;
+                    break;
+                }
+                case 1:
+                {
+                    if (tmp < GLOBAL_REGION_Y_MIN_M || tmp > GLOBAL_REGION_Y_MAX_M)
+                    {
+                        //   std::cout << "DEBUG Y " << i << std::endl;
+                        _gl_data_vertices[i-1] = 0.f;
+                        _gl_data_vertices[i] = 0.f;
+                        _gl_data_vertices[++i] = 0.f;
+                    }
+                    else
+                        _gl_data_vertices[i] = tmp;
+                    break;
+                }
+                case 2:
+                {
+                    if (tmp < GLOBAL_REGION_Z_MIN_M || tmp > GLOBAL_REGION_Z_MAX_M)
+                    {
+                        //   std::cout << "DEBUG Z " << i << std::endl;
+                        _gl_data_vertices[i-2] = 0.f;
+                        _gl_data_vertices[i-1] = 0.f;
+                        _gl_data_vertices[i] = 0.f;
+                    }
+                    else
+                        _gl_data_vertices[i] = tmp;
+                    break;
+                }
+                }
+            }
+            else
+                _gl_data_vertices[i] = verticesData->at(in_idx++);
+        }
         _mtx_vertices.unlock();
         auto vert_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-vert_start).count();
     }
@@ -321,6 +381,8 @@ public:
         glfwSetInputMode(_Window, GLFW_STICKY_KEYS, GL_TRUE);
         // Hide the mouse and enable unlimited mouvement
         glfwSetInputMode(_Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        // Disable vsync
+        glfwSwapInterval(0);
 
         // Set the mouse at the center of the screen
         glfwPollEvents();
@@ -332,11 +394,11 @@ public:
         // Enable depth test - Correct near and far objects by Z value
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_PROGRAM_POINT_SIZE);
-        glLineWidth(10.f);
+        //  glLineWidth(1000.f);
         // Accept fragment if it closer to the camera than the former one
         glDepthFunc(GL_LESS);
         // Cull triangles which normal is not towards the camera
-        // glEnable(GL_CULL_FACE);
+        glEnable(GL_CULL_FACE);
 
         // VAO - create a Vertex Array Object and set it as the current one
         glGenVertexArrays(1, &_VertexArrayObjectID);
@@ -371,6 +433,7 @@ public:
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, _indices->size() * sizeof(unsigned int), &_indices->at(0), GL_STATIC_DRAW);
 #endif
         // Fill default colors
+        _mtx_colors.lock();
         for (size_t i=0; i<_data_size_points; i++)
         {
             float val = 0.f;// = ((float)std::rand()/(float)RAND_MAX);
@@ -431,15 +494,20 @@ public:
 
             _gl_data_colors[i] = val;
         }
-        // Fill default vertices and colors (coordinate system)
+        _mtx_colors.unlock();
+        // Fill default coordinate system
         size_t idx = 0;
+        _mtx_vertices.lock();
+        _mtx_colors.lock();
         for (size_t i=_data_size_points; i<_data_size_total; i++)
         {
-
             _gl_data_vertices[i] = _cs_line_vertices[idx];
             _gl_data_colors[i] =_cs_line_colors[idx];
+            std::cout << "DEBUG filling CS idx" << i << " vert:" << _gl_data_vertices[i] << " col:" << _gl_data_colors[i] << std::endl;
             idx++;
         }
+        _mtx_vertices.unlock();
+        _mtx_colors.unlock();
         return true;
     }
 
@@ -512,13 +580,20 @@ public:
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _VertexBufferObjectID);
             glDrawElements(
                         GL_POINTS,      // mode
-                        _indices->size(),    // count
+                        //  _indices->size(),    // count
+                        _data_size_points,    // count
                         GL_UNSIGNED_INT,   // type
                         (void*)0           // element array buffer offset
                         );
+            glDrawElements(
+                        GL_LINES,      // mode
+                        _data_size_cs,    // count
+                        GL_UNSIGNED_INT,   // type
+                        (void*)_data_size_points           // element array buffer offset
+                        );
 #else
-            glDrawArrays(GL_POINTS, 0, _data_size_points-1);
-            glDrawArrays(GL_LINES, _data_size_points, _data_size_total-1);
+            glDrawArrays(GL_POINTS, 0, FRAME_DATA_LENGTH*3);
+            glDrawArrays(GL_LINES, FRAME_DATA_LENGTH*3, 6);
 #endif
             glDisableVertexAttribArray(0);
             glDisableVertexAttribArray(1);

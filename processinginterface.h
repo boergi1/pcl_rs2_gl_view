@@ -199,8 +199,8 @@ private:
     // Segmentation variables
     const int _dx_n8[8] = {+1, +1, 0, -1, -1, -1, 0, +1};
     const int _dy_n8[8] = {0, +1, +1, +1, 0, -1, -1, -1};
-    float _distanceThresholdMax = 0.75f;
-    float _distanceThresholdMin = 0.1f;
+    float _distanceThresholdMax = GLOBAL_REGION_Z_MAX_M;
+    float _distanceThresholdMin = GLOBAL_REGION_Z_MIN_M;
     float _radiusThreshold = 0.100f;
 
     float euclideanDistance3D(Eigen::Vector3d* point_1, Eigen::Vector3d* point_2)

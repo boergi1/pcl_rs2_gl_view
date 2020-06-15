@@ -2,12 +2,12 @@
 #define FILTERS_H
 
 // Global region filters
-#define GLOBAL_REGION_X_MIN_M -1.0
-#define GLOBAL_REGION_X_MAX_M 1.0
-#define GLOBAL_REGION_Y_MIN_M -2.0
-#define GLOBAL_REGION_Y_MAX_M 2.0
-#define GLOBAL_REGION_Z_MIN_M 0.70f
-#define GLOBAL_REGION_Z_MAX_M 0.75f
+#define GLOBAL_REGION_X_MIN_M -4.0f
+#define GLOBAL_REGION_X_MAX_M 4.0f
+#define GLOBAL_REGION_Y_MIN_M -4.0f
+#define GLOBAL_REGION_Y_MAX_M 4.0f
+#define GLOBAL_REGION_Z_MIN_M 0.10f
+#define GLOBAL_REGION_Z_MAX_M 1.00f
 
 
 // Realsense frame filters

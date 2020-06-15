@@ -56,6 +56,7 @@ int main() try
     }
     else MainWindow->drawDataPoints();
 
+    std::cerr << "Window closed" << std::endl;
     // Window was closed, terminate.
     device_interface->disconnectRealSenseDevices();
     rs2_pcl_conv->setActive(false);

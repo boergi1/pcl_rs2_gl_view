@@ -186,7 +186,12 @@ public:
 
 };
 
-class SegmentationProcessor
+
+
+
+
+
+class SegmentationProcessor // -> class Tracker -> class CloudCombiner (evtl temporal filter, find the transformation matrix)
 {
 
 private:
@@ -755,9 +760,6 @@ private:
 
     }
 
-
-
-
 public:
     SegmentationProcessor(CameraType_t camType)
     {
@@ -771,7 +773,7 @@ public:
         if (_input.size() > QUE_SIZE_SEG)
         {
     #if VERBOSE
-            std::cerr << "(SegmentationProcessor) Too many points in input queue " << m_camtype << std::endl;
+            std::cerr << "(SegmentationProcessor) Too many points in input queue " << _camType << std::endl;
     #endif
             _mtxIn.lock();
             auto tmpptr = _input.front();
@@ -788,7 +790,7 @@ public:
         if (_output.size() > QUE_SIZE_SEG)
         {
     #if VERBOSE
-            std::cerr << "(SegmentationProcessor) Too many objects in output queue " << m_camtype << std::endl;
+            std::cerr << "(SegmentationProcessor) Too many objects in output queue " << _camType << std::endl;
     #endif
             _mtxOut.lock();
             auto tmpptr = _output.front();
@@ -797,15 +799,6 @@ public:
             _mtxOut.unlock();
         }
     }
-
-
-    //  void addOutput(BaseTask* task);
-    //    std::deque<BaseTask*> TaskQueue;
-
-
-
-
-
 };
 
 class ProcessingInterface // todo: add one thread for each camera

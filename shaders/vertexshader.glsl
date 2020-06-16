@@ -16,13 +16,24 @@ layout(location = 1) in vec3 vertexColor;
 out vec3 fragmentColor;
 
 // Values that stay constant for the whole mesh.
-uniform mat4 MVP;
+uniform mat4 M;
+uniform mat4 V;
+uniform mat4 P;
+uniform vec4 ClipPlane_Z;
+//uniform vec4 plane0 = vec4(0,0,-1,0.5);
 
 
 void main(){
     gl_PointSize = 0.1;
+    vec4 Position = vec4(vertexPosition_modelspace,1);
+
     // Output position of the vertex, in clip space : MVP * position
-    gl_Position =  MVP * vec4(vertexPosition_modelspace,1);
+    gl_Position = P*V*M * Position;
+    gl_ClipDistance[0] = dot(M * Position, ClipPlane_Z); // Clip plane in World
+//    gl_ClipDistance[0] = dot(plane0, V*M * Position); // Clip plane in View
+
+
+
     // The color of each vertex will be interpolated
     // to produce the color of each fragment
     fragmentColor = vertexColor;

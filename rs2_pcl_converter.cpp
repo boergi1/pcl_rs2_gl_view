@@ -97,20 +97,6 @@ Rs2_PCL_Converter::Rs2_PCL_Converter(DeviceInterface *in_interface_ref, Processi
         }
         m_extrinsics.push_back(camera_extrinsics_t(copyMatPtrFloat(R), copyMatPtrFloat(T)));
     }
-
-    // DEBUG
-    for(auto i=0; i<m_extrinsics.size();i++)
-    {
-        auto R = m_extrinsics.at(i).R;
-        auto T = m_extrinsics.at(i).T;
-        std::cout << std::endl << "DEBUG Extrinsics CONSTRUCTOR" << std::endl
-                  << R[0] << " " << R[1] << " " << R[2] << " | " << T[0] << std::endl
-                  << R[3] << " " << R[4] << " " << R[5] << " | " << T[1] << std::endl
-                  << R[6] << " " << R[7] << " " << R[8] << " | " << T[2] <<  std::endl << std::endl;
-    }
-
-
-
 }
 
 Rs2_PCL_Converter::~Rs2_PCL_Converter()

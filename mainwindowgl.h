@@ -21,11 +21,13 @@
 using namespace glm;
 
 #define USE_VBO 0
+#define CLIP_PLANE 0
 
 class MainWindowGL
 {
 private:
     GLFWwindow* _Window;
+
     int _windowWidth = 1024;
     int _windowHeight = 768;
     bool _active = false;
@@ -47,44 +49,25 @@ private:
     glm::mat4 _ProjectionMatrix;
     glm::mat4 _ModelMatrix = glm::mat4(1.0);
 
-    GLuint _MVPMatrixID;
-    GLuint _ViewMatrixID;
-    GLuint _ModelMatrixID;
 
-    // static float g_vertex_buffer_data[]
-    static const size_t _data_size_points = FRAME_DATA_SIZE*3;
-    static const size_t _data_size_cs = 18;
-    static const size_t _data_size_total = _data_size_points + _data_size_cs; // 3d points + coordinate system
-    //    float* _gl_data_vertices = new float[_data_size_total];
-    //    float* _gl_data_colors = new float[_data_size_total];
+    // Memory order
+    /* #1 */ static const size_t _data_size_points = FRAME_DATA_SIZE*3;
+    /* #2 */ static const size_t _data_size_cs_world = 6*3;
+    /* #3 */ static const size_t _data_size_region_pts = 6*3;//8*3;
+
+    static const size_t _data_size_total = _data_size_points + _data_size_cs_world + _data_size_region_pts;
+    // Data arrays
     float _gl_data_vertices[_data_size_total];
     float _gl_data_colors[_data_size_total];
     std::vector<unsigned int>* _indices = new std::vector<unsigned int>(_data_size_total);
     std::mutex _mtx_vertices;
     std::mutex _mtx_colors;
-
+    // GLSL access ids
     GLuint _VertexArrayObjectID;
     GLuint _VerticesID;
     GLuint _ColorsID;
     GLuint _VertexBufferObjectID;
-
-
-    const float _cs_line_vertices[_data_size_cs] = {
-        0.f,0.f,0.f,
-        0.5f,0.f,0.f,
-        0.f,0.f,0.f,
-        0.f,0.5f,0.f,
-        0.f,0.f,0.f,
-        0.f,0.f,0.5f
-    };
-    const float _cs_line_colors[_data_size_cs] = {
-        1.f,0.f,0.f,
-        1.f,0.f,0.f,
-        0.f,1.f,0.f,
-        0.f,1.f,0.f,
-        0.f,0.f,1.f,
-        0.f,0.f,1.f
-    };
+    GLuint _ViewMatrixID, _ModelMatrixID, _ProjectionMatrixID;
 
     GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path)
     {
@@ -129,7 +112,6 @@ private:
             std::vector<char> VertexShaderErrorMessage(InfoLogLength+1);
             glGetShaderInfoLog(VertexShaderID, InfoLogLength, NULL, &VertexShaderErrorMessage[0]);
             std::cerr << &VertexShaderErrorMessage[0] << std::endl;
-            //    printf("%s\n", &VertexShaderErrorMessage[0]);
         }
         // Compile Fragment Shader
         std::cout << "Compiling shader: " << fragment_file_path << std::endl;
@@ -166,11 +148,7 @@ private:
 
     void computeMatricesFromInputs()
     {
-
-        // glfwGetTime is called only once, the first time this function is called
         static double lastTime = glfwGetTime();
-
-        // Compute time difference between current and last frame
         double currentTime = glfwGetTime();
         float deltaTime = float(currentTime - lastTime);
 
@@ -239,7 +217,6 @@ private:
                     up                  // Head is up (set to 0,-1,0 to look upside-down)
                     );
 
-        // For the next frame, the "last time" will be "now"
         lastTime = currentTime;
     }
 
@@ -261,57 +238,7 @@ public:
 
         _mtx_vertices.lock();
         for (size_t i = bufferOffset; i < end_size; i++)
-        {
-            //   std::cout << "DEBUG loop " << i << std::endl;
-            if ((false))
-            {
-                auto tmp = verticesData->at(in_idx++);
-                switch (i%3)
-                {
-                case 0:
-                {
-                    if (tmp < GLOBAL_REGION_X_MIN_M || tmp > GLOBAL_REGION_X_MAX_M)
-                    {
-                        //  std::cout << "DEBUG X " << i << std::endl;
-                        _gl_data_vertices[i] = 0.f;
-                        _gl_data_vertices[++i] = 0.f;
-                        _gl_data_vertices[++i] = 0.f;
-                    }
-                    else
-                        _gl_data_vertices[i] = tmp;
-                    break;
-                }
-                case 1:
-                {
-                    if (tmp < GLOBAL_REGION_Y_MIN_M || tmp > GLOBAL_REGION_Y_MAX_M)
-                    {
-                        //   std::cout << "DEBUG Y " << i << std::endl;
-                        _gl_data_vertices[i-1] = 0.f;
-                        _gl_data_vertices[i] = 0.f;
-                        _gl_data_vertices[++i] = 0.f;
-                    }
-                    else
-                        _gl_data_vertices[i] = tmp;
-                    break;
-                }
-                case 2:
-                {
-                    if (tmp < GLOBAL_REGION_Z_MIN_M || tmp > GLOBAL_REGION_Z_MAX_M)
-                    {
-                        //   std::cout << "DEBUG Z " << i << std::endl;
-                        _gl_data_vertices[i-2] = 0.f;
-                        _gl_data_vertices[i-1] = 0.f;
-                        _gl_data_vertices[i] = 0.f;
-                    }
-                    else
-                        _gl_data_vertices[i] = tmp;
-                    break;
-                }
-                }
-            }
-            else
-                _gl_data_vertices[i] = verticesData->at(in_idx++);
-        }
+            _gl_data_vertices[i] = verticesData->at(in_idx++);
         _mtx_vertices.unlock();
         auto vert_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-vert_start).count();
     }
@@ -391,14 +318,11 @@ public:
         // background color
         glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
 
-        // Enable depth test - Correct near and far objects by Z value
-        glEnable(GL_DEPTH_TEST);
-        glEnable(GL_PROGRAM_POINT_SIZE);
-        //  glLineWidth(1000.f);
-        // Accept fragment if it closer to the camera than the former one
-        glDepthFunc(GL_LESS);
-        // Cull triangles which normal is not towards the camera
-        glEnable(GL_CULL_FACE);
+        glEnable(GL_DEPTH_TEST); // depth test - Correct near and far objects by Z value
+        //  glEnable(GL_DEPTH_CLAMP);
+        glEnable(GL_PROGRAM_POINT_SIZE); // point size can be specified in shader
+        glDepthFunc(GL_LESS); // cull fragments hidden from camera
+      //  glEnable(GL_CULL_FACE); // cull triangles which normal is not towards the camera
 
         // VAO - create a Vertex Array Object and set it as the current one
         glGenVertexArrays(1, &_VertexArrayObjectID);
@@ -412,9 +336,20 @@ public:
         // Pass MVP matrix to GLSL
         // Get a handle for our "MVP" uniform
         // Only during the initialisation
-        _MVPMatrixID = glGetUniformLocation(_programID, "MVP");
-        _ViewMatrixID = glGetUniformLocation(_programID, "V");
         _ModelMatrixID = glGetUniformLocation(_programID, "M");
+        _ViewMatrixID = glGetUniformLocation(_programID, "V");
+        _ProjectionMatrixID = glGetUniformLocation(_programID, "P");
+
+
+        //   glEnable(GL_CLIP_PLANE0); // clipping
+#if CLIP_PLANE
+        glEnable(GL_CLIP_DISTANCE0);
+        // Clip plane
+        float PlaneEquation[] = {0, 0, -1, GLOBAL_REGION_Z_MAX_M};
+        GLuint _ClipPlaneID_Z = glGetUniformLocation(_programID, "ClipPlane_Z");
+        glUniform4fv(_ClipPlaneID_Z, 1, &PlaneEquation[0]);
+#endif
+
 
         // Vertex buffer
         glGenBuffers(1, &_VerticesID);     // Generate 1 buffer, put the resulting identifier in vertexbuffer
@@ -432,11 +367,20 @@ public:
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _VertexBufferObjectID);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, _indices->size() * sizeof(unsigned int), &_indices->at(0), GL_STATIC_DRAW);
 #endif
+        fillPointModelColors();
+        fillCoordSystemWorld();
+        fillPointModelRegion();
+
+        return true;
+    }
+
+    void fillPointModelColors()
+    {
         // Fill default colors
         _mtx_colors.lock();
         for (size_t i=0; i<_data_size_points; i++)
         {
-            float val = 0.f;// = ((float)std::rand()/(float)RAND_MAX);
+            float val = 0.f;
             if (i < FRAME_DATA_SIZE) // R
                 switch (i % 3) {
                 case 0:
@@ -491,25 +435,89 @@ public:
                     break;
                 }
                 }
-
             _gl_data_colors[i] = val;
         }
         _mtx_colors.unlock();
-        // Fill default coordinate system
+    }
+
+    void fillCoordSystemWorld()
+    {
+        const float coordsys_world_vertices[_data_size_cs_world] = {
+            0.f,0.f,0.f,
+            0.5f,0.f,0.f,
+            0.f,0.f,0.f,
+            0.f,0.5f,0.f,
+            0.f,0.f,0.f,
+            0.f,0.f,0.5f
+        };
+        const float coordsys_world_colors[_data_size_cs_world] = {
+            1.f,0.f,0.f,
+            1.f,0.f,0.f,
+            0.f,1.f,0.f,
+            0.f,1.f,0.f,
+            0.f,0.f,1.f,
+            0.f,0.f,1.f
+        };
+        // Fill world coordinate system
         size_t idx = 0;
         _mtx_vertices.lock();
         _mtx_colors.lock();
-        for (size_t i=_data_size_points; i<_data_size_total; i++)
+        for (size_t i=_data_size_points; i<_data_size_points+_data_size_cs_world; i++)
         {
-            _gl_data_vertices[i] = _cs_line_vertices[idx];
-            _gl_data_colors[i] =_cs_line_colors[idx];
-            std::cout << "DEBUG filling CS idx" << i << " vert:" << _gl_data_vertices[i] << " col:" << _gl_data_colors[i] << std::endl;
+            _gl_data_vertices[i] = coordsys_world_vertices[idx];
+            _gl_data_colors[i] =coordsys_world_colors[idx];
             idx++;
         }
         _mtx_vertices.unlock();
         _mtx_colors.unlock();
-        return true;
     }
+
+    void fillPointModelRegion()
+    {
+
+        //        const float region_points_vertices[_data_size_region_pts] = {
+        //            GLOBAL_REGION_X_MIN_M,GLOBAL_REGION_Y_MIN_M,GLOBAL_REGION_Z_MIN_M,
+        //            GLOBAL_REGION_X_MAX_M,GLOBAL_REGION_Y_MIN_M,GLOBAL_REGION_Z_MIN_M,
+        //            GLOBAL_REGION_X_MAX_M,GLOBAL_REGION_Y_MAX_M,GLOBAL_REGION_Z_MIN_M,
+        //            GLOBAL_REGION_X_MIN_M,GLOBAL_REGION_Y_MAX_M,GLOBAL_REGION_Z_MIN_M,
+        //            GLOBAL_REGION_X_MIN_M,GLOBAL_REGION_Y_MAX_M,GLOBAL_REGION_Z_MAX_M,
+        //            GLOBAL_REGION_X_MIN_M,GLOBAL_REGION_Y_MIN_M,GLOBAL_REGION_Z_MAX_M,
+        //            GLOBAL_REGION_X_MAX_M,GLOBAL_REGION_Y_MIN_M,GLOBAL_REGION_Z_MAX_M,
+        //            GLOBAL_REGION_X_MAX_M,GLOBAL_REGION_Y_MAX_M,GLOBAL_REGION_Z_MAX_M
+        //        };
+        const float region_points_vertices[_data_size_region_pts] = { // Triangles
+                                                                      GLOBAL_REGION_X_MAX_M,GLOBAL_REGION_Y_MAX_M,GLOBAL_REGION_Z_MAX_M,
+                                                                      GLOBAL_REGION_X_MAX_M,GLOBAL_REGION_Y_MIN_M,GLOBAL_REGION_Z_MAX_M,
+                                                                      GLOBAL_REGION_X_MIN_M,GLOBAL_REGION_Y_MIN_M,GLOBAL_REGION_Z_MAX_M,
+                                                                      GLOBAL_REGION_X_MIN_M,GLOBAL_REGION_Y_MIN_M,GLOBAL_REGION_Z_MAX_M,
+                                                                      GLOBAL_REGION_X_MIN_M,GLOBAL_REGION_Y_MAX_M,GLOBAL_REGION_Z_MAX_M,
+                                                                      GLOBAL_REGION_X_MAX_M,GLOBAL_REGION_Y_MAX_M,GLOBAL_REGION_Z_MAX_M
+                                                                    };
+        float gray = 0.6f;
+        const float region_points_colors[_data_size_region_pts] = {
+            gray,gray,gray,
+            gray,gray,gray,
+            gray,gray,gray,
+            gray,gray,gray,
+            gray,gray,gray,
+            gray,gray,gray/*,
+            gray,gray,gray,
+            gray,gray,gray*/
+        };
+        // Fill region data
+        size_t idx = 0;
+        _mtx_vertices.lock();
+        _mtx_colors.lock();
+        for (size_t i=_data_size_points+_data_size_cs_world; i<_data_size_points+_data_size_cs_world+_data_size_region_pts; i++)
+        {
+            _gl_data_vertices[i] = region_points_vertices[idx];
+            _gl_data_colors[i] = region_points_colors[idx];
+            idx++;
+        }
+        _mtx_vertices.unlock();
+        _mtx_colors.unlock();
+    }
+
 
     bool isActive() { return _active; }
 
@@ -527,7 +535,6 @@ public:
             glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
             // Compute the MVP matrix from keyboard and mouse input
             computeMatricesFromInputs();
-            glm::mat4 MVP = _ProjectionMatrix * _ViewMatrix * _ModelMatrix;
 
             // Process data start
 
@@ -549,7 +556,9 @@ public:
 
             // Send our transformation to the currently bound shader,
             // in the "MVP" uniform
-            glUniformMatrix4fv(_MVPMatrixID, 1, GL_FALSE, &MVP[0][0]);
+            glUniformMatrix4fv(_ModelMatrixID, 1, GL_FALSE, &_ModelMatrix[0][0]);
+            glUniformMatrix4fv(_ViewMatrixID, 1, GL_FALSE, &_ViewMatrix[0][0]);
+            glUniformMatrix4fv(_ProjectionMatrixID, 1, GL_FALSE, &_ProjectionMatrix[0][0]);
 
             // 1st attribute buffer : vertices
             glEnableVertexAttribArray(0);
@@ -594,6 +603,10 @@ public:
 #else
             glDrawArrays(GL_POINTS, 0, FRAME_DATA_LENGTH*3);
             glDrawArrays(GL_LINES, FRAME_DATA_LENGTH*3, 6);
+          //  glDrawArrays(GL_LINE_STRIP, FRAME_DATA_LENGTH*3+6, 8);
+#if CLIP_PLANE
+            glDrawArrays(GL_TRIANGLES, FRAME_DATA_LENGTH*3+6, 6);
+#endif
 #endif
             glDisableVertexAttribArray(0);
             glDisableVertexAttribArray(1);

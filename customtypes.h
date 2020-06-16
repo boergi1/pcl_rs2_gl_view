@@ -30,10 +30,6 @@ typedef struct camera_extrinsics_s {
     camera_extrinsics_s(float rotation[9], float translation[3])
     {
         R = rotation; T = translation;
-        std::cout << std::endl << "DEBUG Extrinsics STRUCT" << std::endl
-                  << R[0] << " " << R[1] << " " << R[2] << " | " << T[0] << std::endl
-                  << R[3] << " " << R[4] << " " << R[5] << " | " << T[1] << std::endl
-                  << R[6] << " " << R[7] << " " << R[8] << " | " << T[2] <<  std::endl << std::endl;
     }
     camera_extrinsics_s()
     {

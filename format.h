@@ -4,7 +4,7 @@
 #include <iomanip>
 
 // Verbosity level
-#define VERBOSE 0
+#define VERBOSE 2
 // Global settings
 #define PROC_PIPE_PC_ENABLED 0
 #define PROC_PIPE_MAT_ENABLED 1

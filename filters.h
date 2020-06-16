@@ -2,23 +2,23 @@
 #define FILTERS_H
 
 // Global region filters
-#define GLOBAL_REGION_X_MIN_M -4.0f
-#define GLOBAL_REGION_X_MAX_M 4.0f
-#define GLOBAL_REGION_Y_MIN_M -4.0f
-#define GLOBAL_REGION_Y_MAX_M 4.0f
+#define GLOBAL_REGION_X_MIN_M -1.5f
+#define GLOBAL_REGION_X_MAX_M 1.5f
+#define GLOBAL_REGION_Y_MIN_M -0.5f
+#define GLOBAL_REGION_Y_MAX_M 0.5f
 #define GLOBAL_REGION_Z_MIN_M 0.10f
-#define GLOBAL_REGION_Z_MAX_M 1.00f
+#define GLOBAL_REGION_Z_MAX_M 1.0f
 
 
 // Realsense frame filters
 #define FILTER_DEPTH_RS_ENABLED 1      // Toggle filters
 
+#if FILTER_DEPTH_RS_ENABLED
 #define RS_FILTER_DECIMATION_ENABLED 0  // Decimation - reduces depth frame density
 #define RS_FILTER_THRESHOLD_ENABLED 1   // Threshold - removes values outside recommended range
 #define RS_FILTER_SPATIAL_ENABLED 0     // Spatial - edge-preserving spatial smoothing
 #define RS_FILTER_HOLEFILL_ENABLED 0    // Hole filling - Rectify missing data
 
-#if FILTER_DEPTH_RS_ENABLED
 #define RS_FILTER_DEC_MAG 2.0f // (min: 1, max: 8, step: 1)
 #define RS_FILTER_THR_MIN 0.4f // (min: 0, max: 16, step: 0.1)
 #define RS_FILTER_THR_MAX 2.0f // (min: 0, max: 16, step: 0.1)

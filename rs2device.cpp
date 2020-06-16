@@ -181,7 +181,7 @@ void Rs2Device::rs2_capture_thread_func()
         if (m_recording)
         {
 
-#if FILTER_DEPTH_RS_ENABLED && RS_DEPTH_ENABLED
+#if (FILTER_DEPTH_RS_ENABLED && RS_DEPTH_ENABLED)
 #if RS_FILTER_DECIMATION_ENABLED
             depth_frame = m_dec_filter.process(depth_frame);
 #endif

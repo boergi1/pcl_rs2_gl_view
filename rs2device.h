@@ -13,6 +13,7 @@
 #include <opencv2/core/core.hpp>
 
 #include "format.h"
+#include "filters.h"
 #include "customtypes.h"
 
 typedef enum

@@ -69,9 +69,10 @@
 #define BUF_SIZE_TOBJ 10
 #define BUF_SIZE_VEL CV_FRAME_RATE*2 // x, y pairs
 // Thread poll delays
-#define DELAY_CONV_POLL_NS FRAME_PERIOD_NS/2/3
-#define DELAY_PCL_POLL_NS FRAME_PERIOD_NS/2
-#define DELAY_PCL_VIEW_NS FRAME_PERIOD_NS/2
+#define DELAY_CONVERTER_NS FRAME_PERIOD_NS/2/3
+#define DELAY_PROCINTERFACE_NS FRAME_PERIOD_NS/2/3
+#define DELAY_PROC_SEGM_NS FRAME_PERIOD_NS/2
+
 // Thread idle delays
 #define DELAY_SEGM CV_FRAME_PERIOD_MS/2
 #define DELAY_TRAC CV_FRAME_PERIOD_MS/2
@@ -86,11 +87,11 @@
 #define CV_REF_SIZE_MM 26
 
 // Toggle viewers
-#define PCL_VIEWER 0
 #define IMSHOW_CV 1
 
-#define GL_DRAW_POINTCLOUD 0
-#define GL_DRAW_MOSAIC 0
+// Predefined sizes
+#define SIZE_XYZ 3
+#define SIZE_RGB 3
 
 
 

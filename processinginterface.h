@@ -186,11 +186,6 @@ public:
 
 };
 
-
-
-
-
-
 class SegmentationProcessor // -> class Tracker -> class CloudCombiner (evtl temporal filter, find the transformation matrix)
 {
 
@@ -200,6 +195,61 @@ private:
     CameraType_t _camType;
     std::deque<std::vector<float>*> _input;
     std::deque<std::vector<TrackedObject>*> _output;
+    bool _active = false;
+
+    std::vector<float>* _currentPointCloud;
+
+    void processSegmentation()
+    {
+        while (_active)
+        {
+            bool idle = true;
+            while(_input.size())
+            {
+#if (VERBOSE > 1)
+                auto seg_start = std::chrono::high_resolution_clock::now();
+#endif
+                idle = false;
+                _mtxIn.lock();
+                _currentPointCloud = _input.front();
+                _input.pop_front();
+                _mtxIn.unlock();
+
+                if((false))
+                {
+                    std::vector<Eigen::Vector3d> test_vec;
+                    test_vec.resize(_currentPointCloud->size()/SIZE_XYZ);
+                    int test_idx = 0;
+                    for (int i=0;i<_currentPointCloud->size(); i++)
+                    {
+                        switch(i % SIZE_XYZ)
+                        {
+                        case 0: test_vec.at(test_idx).x() = _currentPointCloud->at(i); break;
+                        case 1: test_vec.at(test_idx).y() = _currentPointCloud->at(i); break;
+                        case 2: test_vec.at(test_idx++).z() = _currentPointCloud->at(i); break;
+                        default: break;
+                        }
+                    }
+                    euclideanUnionFind(&test_vec);
+                }
+                else
+                    euclideanUnionFind();
+
+
+                delete _currentPointCloud;
+
+
+#if (VERBOSE > 1)
+                auto seg_end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-seg_start).count();
+                std::cout << "(SegmentationProcessor) processSegmentation took " << seg_end << " ms " << cameraTypeToString(_camType) << std::endl;
+#endif
+
+
+            }
+            if (idle) std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_PROC_SEGM_NS));
+        }
+    }
+
 
     // Segmentation variables
     const int _dx_n8[8] = {+1, +1, 0, -1, -1, -1, 0, +1};
@@ -213,6 +263,14 @@ private:
         float dx = point_2->x() - point_1->x();
         float dy = point_2->y() - point_1->y();
         float dz = point_2->z() - point_1->z();
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    float euclideanDistance3D(float* point_1, float* point_2)
+    {
+        float dx = point_2[0] - point_1[0];
+        float dy = point_2[1] - point_1[1];
+        float dz = point_2[2] - point_1[2];
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
@@ -458,14 +516,119 @@ private:
         //   cout << b << " is root of "<< a <<endl;
     }
 
+
+
+    void euclideanUnionFind()
+    {
+
+
+        int w = FRAME_WIDTH_DEPTH;
+        int h = FRAME_HEIGHT_DEPTH;
+
+        int component_size = _currentPointCloud->size()/SIZE_XYZ;
+
+        int component [component_size];
+        for (int i = 0; i < component_size; i++)
+            component[i] = i;
+
+        for (int x = 0; x < w; x++)
+            for (int y = 0; y < h; y++)
+            {
+                int x2 = x+1;
+                int y2 = y+1;
+
+                auto current_component = x*h + y;
+
+
+                int pc_idx_center = y*w + x;
+                //  auto center_point = Cloud->at(y*w+x);
+                float currentPoint [SIZE_XYZ] = {
+                    _currentPointCloud->at(pc_idx_center),     // X
+                    _currentPointCloud->at(pc_idx_center+1),   // Y
+                    _currentPointCloud->at(pc_idx_center+2) }; // Z
+
+                if (currentPoint[2] < _distanceThresholdMin || currentPoint[2] > _distanceThresholdMax)
+                {
+                    component[current_component] = 0;
+                    continue;
+                }
+                if (x2 < w)
+                {
+                    int neighbor_component = x2*h + y;
+                    int pc_idx_neighb = y*w + x2;
+                    //  auto neighbor_point = Cloud->at(y*w+x2);
+                    float neighborPoint [SIZE_XYZ] = {
+                        _currentPointCloud->at(pc_idx_neighb),     // X
+                        _currentPointCloud->at(pc_idx_neighb+1),   // Y
+                        _currentPointCloud->at(pc_idx_neighb+2) }; // Z
+
+
+                    if (neighborPoint[2] < _distanceThresholdMin || neighborPoint[2] > _distanceThresholdMax)
+                    {
+                        component[neighbor_component] = 0;
+                        continue;
+                    }
+                    if (euclideanDistance3D(neighborPoint, currentPoint) < _radiusThreshold)
+                        doUnion(current_component, neighbor_component, component);
+
+                }
+                if (y2 < h)
+                {
+                    int neighbor_component = x*h + y2;
+                    int pc_idx_neighb = y2*w + x;
+                    //  auto neighbor_point = Cloud->at(y2*w+x);
+                    float neighborPoint [SIZE_XYZ] = {
+                        _currentPointCloud->at(pc_idx_neighb),     // X
+                        _currentPointCloud->at(pc_idx_neighb+1),   // Y
+                        _currentPointCloud->at(pc_idx_neighb+2) }; // Z
+
+                    if (neighborPoint[2] < _distanceThresholdMin || neighborPoint[2] > _distanceThresholdMax)
+                    {
+                        component[neighbor_component] = 0;
+                        continue;
+                    }
+                    if (euclideanDistance3D(neighborPoint, currentPoint) < _radiusThreshold)
+                        doUnion(current_component, neighbor_component, component);
+                }
+            }
+
+        cv::Mat labelMat = cv::Mat::zeros(h,w,CV_32S);
+        // cv::Mat labelMat = cv::Mat_<int32_t>(h,w,-1);
+
+        // fill labels
+        for (int x = 0; x < w; x++)
+        {
+            for (int y = 0; y < h; y++)
+            {
+                int c = x*h + y;
+                //   if (c == component[c]) cout << "Parent root found: " << c << endl;
+                while (component[c] != c) c = component[c];
+                labelMat.at<int32_t>(y,x) = c;
+            }
+        }
+
+
+        if ((true) && _camType == CameraType_t::CENTRAL)
+        {
+            cv::Mat show;
+            show = cv::Mat(labelMat.rows, labelMat.cols, CV_8U);
+            double scale = (1.0 / (double)component_size) * (double)std::numeric_limits<uint8_t>::max();
+            labelMat.convertTo(show, CV_8U, scale);
+            cv::applyColorMap( show, show, cv::COLORMAP_HOT);
+            cv::imshow("euclideanUnionFind", show);
+            cv::waitKey(1);
+        }
+    }
+
+
+
+
+
+
+
     void euclideanUnionFind(std::vector<Eigen::Vector3d>* Cloud)
     {
-        std::cout << "euclideanUnionFind" << std::endl;
-        //        float distanceThresholdMax = 0.76f;//0.75f;
-        //        float distanceThresholdMin = 0.70f;// 0.70f;
-        //        float radiusThreshold = 0.010f;
 
-        auto start = std::chrono::high_resolution_clock::now();
 
         int w = FRAME_WIDTH_DEPTH;
         int h = FRAME_HEIGHT_DEPTH;
@@ -534,10 +697,7 @@ private:
         }
 
 
-        auto end = std::chrono::duration_cast <std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count();
-        std::cout << "DEBUG took " << end << " ms" << std::endl;
-
-        if ((true))
+        if ((true) && _camType == CameraType_t::CENTRAL)
         {
             cv::Mat show;
             show = cv::Mat(labelMat.rows, labelMat.cols, CV_8U);
@@ -545,7 +705,7 @@ private:
             labelMat.convertTo(show, CV_8U, scale);
             cv::applyColorMap( show, show, cv::COLORMAP_HOT);
             cv::imshow("euclideanUnionFind", show);
-            cv::waitKey(0);
+            cv::waitKey(1);
         }
     }
 
@@ -765,6 +925,28 @@ public:
     {
         _camType = camType;
     }
+    void setActive(bool running)
+    {
+        if (running)
+        {
+            if ( _thr.joinable() )
+            {
+                std::cerr << "(SegmentationProcessor) Thread already running: " << _thr.get_id() << std::endl;
+                return;
+            }
+            _active = true;
+            _thr = std::thread(&SegmentationProcessor::processSegmentation, this);
+        }
+        else
+        {
+            _active = false;
+            if ( _thr.joinable() )
+                _thr.join();
+            else std::cerr << "(SegmentationProcessor) Thread not joinable: " << _thr.get_id() << std::endl;
+        }
+        return;
+    }
+
     void addInput(std::vector<float>* input)
     {
         _mtxIn.lock();
@@ -772,9 +954,9 @@ public:
         _mtxIn.unlock();
         if (_input.size() > QUE_SIZE_SEG)
         {
-    #if VERBOSE
+#if VERBOSE
             std::cerr << "(SegmentationProcessor) Too many points in input queue " << _camType << std::endl;
-    #endif
+#endif
             _mtxIn.lock();
             auto tmpptr = _input.front();
             _input.pop_front();
@@ -789,9 +971,9 @@ public:
         _mtxOut.unlock();
         if (_output.size() > QUE_SIZE_SEG)
         {
-    #if VERBOSE
+#if VERBOSE
             std::cerr << "(SegmentationProcessor) Too many objects in output queue " << _camType << std::endl;
-    #endif
+#endif
             _mtxOut.lock();
             auto tmpptr = _output.front();
             _output.pop_front();
@@ -816,7 +998,9 @@ private:
     std::vector< MatQueue* > m_input_depth;
     std::vector< MatQueue* > m_input_color;
 
-    std::thread m_pc_proc_thread;
+    std::vector< SegmentationProcessor* > _segmentThreads;
+
+    std::thread _processingThread;
 
 #if (PCL_VIEWER == 1)
     pcl::visualization::CloudViewer m_pcl_viewer;
@@ -824,7 +1008,7 @@ private:
     std::mutex m_viewer_mtx;
 #endif
 
-    void pc_proc_thread_func();
+    void processIO();
 
 
 
@@ -835,11 +1019,17 @@ public:
     std::vector<MatQueue *>* getDepthImageRef() { return &m_input_depth; }
     std::vector<MatQueue *>* getColorImageRef() { return &m_input_color; }
 
- //   void initPcViewer (pcl::visualization::PCLVisualizer& viewer);
+    //   void initPcViewer (pcl::visualization::PCLVisualizer& viewer);
 
     void startThread();
 
     void setActive(bool running);
+
+    void setSegmentationActive(bool running)
+    {
+        for (auto segmenter : _segmentThreads)
+            segmenter->setActive(running);
+    }
 
     bool isActive();
 

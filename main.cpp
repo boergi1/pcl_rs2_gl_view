@@ -42,6 +42,7 @@ int main() try
         rs2_pcl_conv->setActive(true);
         std::this_thread::sleep_for(std::chrono::milliseconds(FRAME_PERIOD_MS));
         pcl_interface->setActive(true);
+        pcl_interface->setSegmentationActive(true);
 #endif
     }
     else std::cerr << "No Realsense device found" << std::endl;
@@ -61,6 +62,7 @@ int main() try
     device_interface->disconnectRealSenseDevices();
     rs2_pcl_conv->setActive(false);
     pcl_interface->setActive(false);
+    pcl_interface->setSegmentationActive(false);
 
     delete device_interface;
     delete rs2_pcl_conv;

@@ -105,7 +105,7 @@ typedef struct shared_references_s
 //} rs2_references_t;
 
 // helper functions
-std::string rs2PositionToString(CameraType_t pos);
+std::string cameraTypeToString(CameraType_t pos);
 
 int roundToInt(double val);
 

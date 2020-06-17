@@ -1,16 +1,15 @@
 #include "processinginterface.h"
 
+
 ProcessingInterface::ProcessingInterface(std::vector<CameraType_t> device_types, MainWindowGL* Window)
-#if (PCL_VIEWER == 1)
-    : m_pcl_viewer("Cloud Viewer")
-    #endif
 {
     _WindowRef = Window;
     for (auto& camtype : device_types)
     {
-        //#if PROC_PIPE_PC_ENABLED
+
         m_input_clouds.push_back(new CloudQueue(camtype));
-        //#endif
+        _segmentThreads.push_back(new SegmentationProcessor(camtype));
+
 #if PROC_PIPE_MAT_ENABLED
         m_input_depth.push_back(new MatQueue(camtype, "depth"));
 #if RS_COLOR_ENABLED
@@ -18,56 +17,37 @@ ProcessingInterface::ProcessingInterface(std::vector<CameraType_t> device_types,
 #endif
 #endif
 
-#if PCL_VIEWER
-        m_viewer_clouds.push_back(nullptr);
-#endif
+
     }
-#if PCL_VIEWER
-    m_pcl_viewer.runOnVisualizationThreadOnce (viewer_callback);
-#endif
 }
 
 void ProcessingInterface::setActive(bool running)
 {
     if (running)
     {
-        if ( m_pc_proc_thread.joinable() )
+        if ( _processingThread.joinable() )
         {
-            std::cerr << "(ProcessingInterface) Thread already running: " << m_pc_proc_thread.get_id() << std::endl;
+            std::cerr << "(ProcessingInterface) Thread already running: " << _processingThread.get_id() << std::endl;
             return;
         }
         m_active = true;
-        m_pc_proc_thread = std::thread(&ProcessingInterface::pc_proc_thread_func, this);
-#if (PCL_VIEWER == 1)
-        // m_pcl_viewer.runOnVisualizationThreadOnce (viewer_callback);
-        m_pcl_viewer.runOnVisualizationThread (viewer_update_callback, "ViewerCallback");
-#endif
-
-        //        while (!m_pcl_viewer.wasStopped ())
-        //        {
-        //            //  std::chrono::steady_clock::now();
-        //            std::cout << "PCL viewer main" << std::endl;
-        //            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        //        }
+        _processingThread = std::thread(&ProcessingInterface::processIO, this);
     }
     else
     {
-#if (PCL_VIEWER == 1)
-        m_pcl_viewer.removeVisualizationCallable("ViewerCallback");
-#endif
         m_active = false;
-        if ( m_pc_proc_thread.joinable() )
-            m_pc_proc_thread.join();
-        else std::cerr << "(Converter) Thread not joinable: " << m_pc_proc_thread.get_id() << std::endl;
+        if ( _processingThread.joinable() )
+            _processingThread.join();
+        else std::cerr << "(ProcessingInterface) Thread not joinable: " << _processingThread.get_id() << std::endl;
     }
     return;
 }
 
 bool ProcessingInterface::isActive() { return m_active; }
 
-void ProcessingInterface::pc_proc_thread_func()
+void ProcessingInterface::processIO()
 {
-    std::cout << "Proc thread started # " << std::this_thread::get_id() << std::endl;
+    std::cout << "ProcessingInterface thread # " << std::this_thread::get_id() << std::endl;
     //#if (PCL_VIEWER == 1)
     //    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_downsampled (new pcl::PointCloud<pcl::PointXYZ>);
     //#endif
@@ -145,7 +125,7 @@ void ProcessingInterface::pc_proc_thread_func()
                     auto test = std::numeric_limits<unsigned short>::max();
                     double scale = test / max;
                     cv::imshow("depth "+std::to_string(camType), mat_depth*scale);
-                    // cv::waitKey(1);
+                    cv::waitKey(1);
                 }
 
                 if ((false))
@@ -180,7 +160,6 @@ void ProcessingInterface::pc_proc_thread_func()
             }
         }
 #endif
-        //  cv::waitKey(1);
 #endif
 
 
@@ -199,9 +178,7 @@ void ProcessingInterface::pc_proc_thread_func()
                 std::cout << "(ProcessingInterface) PointCloud received from camera " << camType << " (" << ctr
                           << ") length: " << pointcloud->size()/3 << " size: " << pointcloud->size() << std::endl;
 #endif
-
-                // euclideanUnionFind(pointcloud);
-
+                // Write data to OpenGL
                 switch (camType)
                 {
                 case CameraType_t::FRONT:
@@ -221,6 +198,9 @@ void ProcessingInterface::pc_proc_thread_func()
                 }
                 default: break;
                 }
+
+                // Fill input of task threads
+                _segmentThreads.at(i)->addInput(pointcloud);
 
 
                 if ((false))
@@ -274,7 +254,7 @@ void ProcessingInterface::pc_proc_thread_func()
                     }
                 }
 
-                delete pointcloud;
+                //  delete pointcloud;
 
 
             }
@@ -424,7 +404,7 @@ void ProcessingInterface::pc_proc_thread_func()
 #if (VERBOSE > 2)
             std::cerr << "(ProcessingInterface) Idle" << std::endl;
 #endif
-            std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_PCL_POLL_NS));
+            std::this_thread::sleep_for(std::chrono::nanoseconds(DELAY_PROCINTERFACE_NS));
             continue;
         }
 #if (VERBOSE > 0)

@@ -1,6 +1,6 @@
 #include "customtypes.h"
 
-std::string rs2PositionToString(CameraType_t pos)
+std::string cameraTypeToString(CameraType_t pos)
 {
     std::string tmp;
     switch (pos) {
